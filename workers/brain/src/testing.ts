@@ -1,4 +1,5 @@
 import { env, exports } from "cloudflare:workers";
+import type { DumpItem } from "./reflection";
 import { exportJWK, generateKeyPair, SignJWT, type CryptoKey } from "jose";
 import { vi } from "vitest";
 import { BASE_PATH } from "./http";
@@ -141,13 +142,16 @@ function apiError(type: string, message: string) {
   return { type: "error", error: { type, message } };
 }
 
+/** The task fields of an item that has none of them set, for tests that only care about the rest. */
+export const noTaskFields: Pick<DumpItem, "area" | "who" | "due" | "start" | "location" | "importance" | "inferred"> = { area: "personal", who: "", due: "", start: "", location: "", importance: "", inferred: [] };
+
 /** A raw reflection as Opus might return it, untidy on purpose. */
 export const fakeReflection = {
   summary: "  Dumped a few fake things.   Ended happy. ",
   items: [
-    { kind: "idea", title: "  A fake shed cinema ", detail: "Turn the fake shed into a tiny cinema.", answer: "should be dropped", topics: ["Garden", "garden", " Weekend Projects "] },
-    { kind: "question", title: "How long does fake paint take to dry?", detail: "Asked about drying times.", answer: "About four fake hours.", topics: ["garden"] },
-    { kind: "task", title: " ", detail: "No title, so it's dropped.", answer: "", topics: [] },
+    { kind: "idea", title: "  A fake shed cinema ", detail: "Turn the fake shed into a tiny cinema.", answer: "should be dropped", topics: ["Garden", "garden", " Weekend Projects "], ...noTaskFields },
+    { kind: "question", title: "How long does fake paint take to dry?", detail: "Asked about drying times.", answer: "About four fake hours.", topics: ["garden"], ...noTaskFields },
+    { kind: "task", title: " ", detail: "No title, so it's dropped.", answer: "", topics: [], ...noTaskFields },
   ],
   facts: ["Has a fake shed", "Has a fake shed", " "],
   lessons: ["Short answers land best", " "],

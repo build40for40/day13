@@ -55,6 +55,19 @@ const migrations: string[] = [
     value TEXT NOT NULL
   );
   `,
+  // Adds the 'event' kind. SQLite can't change a CHECK in place, so the table is rebuilt with its rows copied over.
+  `
+  CREATE TABLE files_next (
+    path TEXT PRIMARY KEY,
+    kind TEXT NOT NULL CHECK (kind IN ('user', 'memory', 'session', 'idea', 'question', 'task', 'event', 'thought', 'topic')),
+    frontmatter TEXT NOT NULL DEFAULT '{}',
+    body TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL
+  );
+  INSERT INTO files_next (path, kind, frontmatter, body, updated_at) SELECT path, kind, frontmatter, body, updated_at FROM files;
+  DROP TABLE files;
+  ALTER TABLE files_next RENAME TO files;
+  `,
 ];
 
 export const SCHEMA_VERSION = migrations.length;

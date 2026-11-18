@@ -3,7 +3,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { createClient, liveModel } from "./claude";
 import { consolidate, needsConsolidation } from "./consolidation";
 import { error } from "./http";
-import { USER_MD, type Preferences, type Profile, type ProfilePatch, type PublicProfile } from "./profile";
+import { USER_MD, type JsonValue, type Preferences, type Profile, type ProfilePatch, type PublicProfile } from "./profile";
 import { assembleContext, MAX_RECENT_ITEMS, MAX_SESSION_NOTES, MAX_TOPICS, OPENING_LINE, type ContextSources, type Note } from "./prompt";
 import { renderRecall, search, type SearchableNote } from "./recall";
 import { REFERENCE } from "./reference";
@@ -23,7 +23,7 @@ export const DAILY_TURN_CAP = 200;
 /** How long to wait before trying a failed reflection again, by attempt. After the last one it's saved as failed. */
 export const REFLECTION_RETRY_MINUTES = [1, 5, 30, 120];
 const REFLECTION_TIMEOUT_MS = 10 * 60_000;
-const ITEM_KINDS_SQL = "('idea', 'question', 'task', 'thought')";
+const ITEM_KINDS_SQL = "('idea', 'question', 'task', 'event', 'thought')";
 const CAPTURE_SESSION = "capture_session";
 
 const SSE_HEADERS = { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform" };
@@ -91,6 +91,16 @@ export interface NoteSummary {
   kind: NoteKind;
   title: string;
   updated_at: string;
+  /** The filing fields of a task or event: area, who, due, start, location, importance, status, inferred and topics. Only those that are set. */
+  fields: Record<string, unknown>;
+}
+
+/** What a person can change on a task or event. `null` clears a field. */
+export interface NotePatch {
+  status?: "open" | "done" | "dropped";
+  due?: string | null;
+  importance?: "low" | "normal" | "high" | null;
+  area?: "work" | "personal";
 }
 
 export interface NoteView extends NoteSummary {
@@ -288,6 +298,27 @@ export class UserBrain extends DurableObject<Env> {
     return { ...noteSummary(row), frontmatter: JSON.parse(row.frontmatter), body: row.body, linked_from: linkedFrom.map((l) => l.src) };
   }
 
+  /** Changes a task or event's status, due date, importance or area, keeping the version. Done tasks get a `completed_at`. */
+  updateNote(path: string, patch: NotePatch): NoteView | "note_not_found" | "not_a_task" {
+    this.init();
+    const row = this.sql.exec<FileRow>("SELECT * FROM files WHERE path = ?", path).toArray()[0];
+    if (!row) return "note_not_found";
+    if (row.kind !== "task" && row.kind !== "event") return "not_a_task";
+    const now = new Date().toISOString();
+    const frontmatter: Record<string, JsonValue> = JSON.parse(row.frontmatter);
+    for (const key of ["due", "importance"] as const) {
+      if (key in patch) patch[key] === null || patch[key] === undefined ? delete frontmatter[key] : (frontmatter[key] = patch[key]);
+    }
+    if (patch.area) frontmatter.area = patch.area;
+    if (patch.status) {
+      frontmatter.status = patch.status;
+      if (patch.status === "done") frontmatter.completed_at = now;
+      else delete frontmatter.completed_at;
+    }
+    this.ctx.storage.transactionSync(() => writeFile(this.sql, path, row.kind as NoteKind, frontmatter, row.body, now, "user"));
+    return this.getNote(path)!;
+  }
+
   /** Every kept version of a note, newest first: who wrote it and when. */
   listVersions(path: string): NoteVersion[] {
     this.init();
@@ -441,6 +472,7 @@ export class UserBrain extends DurableObject<Env> {
       topics: topics.map((t) => t.topic).filter(Boolean),
       turns: JSON.parse(row.turns),
       facts: JSON.parse(row.facts),
+      today: `${londonDate(row.started_at)}, ${londonDay(row.started_at)}`,
     });
     const note = this.ctx.storage.transactionSync(() => {
       const current = this.getSessionRow(row.id);
@@ -513,6 +545,10 @@ function sessionView(row: SessionRow): SessionView {
   };
 }
 
+const FIELD_KEYS = ["area", "who", "due", "start", "location", "importance", "status", "completed_at", "inferred", "topics"];
+
 function noteSummary(row: FileRow): NoteSummary {
-  return { path: row.path, kind: row.kind as NoteKind, title: noteTitle(row.path, row.body), updated_at: row.updated_at };
+  const frontmatter = JSON.parse(row.frontmatter) as Record<string, unknown>;
+  const fields = Object.fromEntries(FIELD_KEYS.filter((k) => frontmatter[k] !== undefined).map((k) => [k, frontmatter[k]]));
+  return { path: row.path, kind: row.kind as NoteKind, title: noteTitle(row.path, row.body), updated_at: row.updated_at, fields };
 }

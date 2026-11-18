@@ -5,9 +5,9 @@ import { linkKind, parseWikilinks, wikilink } from "./wikilinks";
 
 export type NoteKind = "user" | "memory" | "session" | ItemKind | "topic";
 
-export const NOTE_KINDS: readonly NoteKind[] = ["user", "memory", "session", "idea", "question", "task", "thought", "topic"];
+export const NOTE_KINDS: readonly NoteKind[] = ["user", "memory", "session", "idea", "question", "task", "event", "thought", "topic"];
 
-const ITEM_FOLDERS: Record<ItemKind, string> = { idea: "ideas", question: "questions", task: "tasks", thought: "thoughts" };
+const ITEM_FOLDERS: Record<ItemKind, string> = { idea: "ideas", question: "questions", task: "tasks", event: "events", thought: "thoughts" };
 const MAX_SLUG = 60;
 
 type Frontmatter = { [key: string]: JsonValue };
@@ -202,13 +202,19 @@ function writeItem(sql: SqlStorage, session: ReflectedSession, item: DumpItem, n
   const body = [
     `# ${item.title}`,
     item.detail,
+    [item.due ? `Due ${item.due}.` : "", item.start ? `When: ${item.start}.` : "", item.location ? `Where: ${item.location}.` : ""].filter(Boolean).join(" "),
     item.answer ? `## Answer\n\n${item.answer}` : "",
     [topics.length ? `Filed under ${topics.join(", ")}.` : "", `From ${wikilink(sessionNotePath(session))}.`].filter(Boolean).join(" "),
   ]
     .filter(Boolean)
     .join("\n\n")
     .concat("\n");
-  writeFile(sql, path, item.kind, { kind: item.kind, session_id: session.id, date: londonDate(session.started_at), topics: item.topics }, body, now, `session:${session.id}`);
+  const fields: Frontmatter = { area: item.area, who: item.who, due: item.due, start: item.start, location: item.location, importance: item.importance };
+  const present = Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== "" && v !== undefined));
+  const frontmatter: Frontmatter = { kind: item.kind, session_id: session.id, date: londonDate(session.started_at), topics: item.topics, ...(present as Frontmatter) };
+  if (item.kind === "task" || item.kind === "event") frontmatter.status = "open";
+  if (item.inferred.length) frontmatter.inferred = item.inferred;
+  writeFile(sql, path, item.kind, frontmatter, body, now, `session:${session.id}`);
   return path;
 }
 

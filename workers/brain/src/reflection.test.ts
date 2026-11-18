@@ -3,7 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createClient } from "./claude";
 import { isRetryable, reflect, ReflectionError, reflectionRequest, renderTranscript, tidyItems, type ReflectionInput } from "./reflection";
-import { fakeReflection, mockClaude } from "./testing";
+import { fakeReflection, mockClaude, noTaskFields } from "./testing";
 import type { Turn } from "./types";
 
 afterEach(() => {
@@ -49,8 +49,8 @@ describe("reflect", () => {
     expect(reflection).toEqual({
       summary: "Dumped a few fake things. Ended happy.",
       items: [
-        { kind: "idea", title: "A fake shed cinema", detail: "Turn the fake shed into a tiny cinema.", answer: "", topics: ["garden", "weekend projects"] },
-        { kind: "question", title: "How long does fake paint take to dry?", detail: "Asked about drying times.", answer: "About four fake hours.", topics: ["garden"] },
+        { kind: "idea", title: "A fake shed cinema", detail: "Turn the fake shed into a tiny cinema.", answer: "", topics: ["garden", "weekend projects"], ...noTaskFields },
+        { kind: "question", title: "How long does fake paint take to dry?", detail: "Asked about drying times.", answer: "About four fake hours.", topics: ["garden"], ...noTaskFields },
       ],
       facts: ["Has a fake shed"],
       lessons: ["Short answers land best"],
@@ -78,7 +78,7 @@ describe("reflect", () => {
 
 describe("tidyItems", () => {
   it("keeps at most three topics and clips long text", () => {
-    const [item] = tidyItems([{ kind: "thought", title: "t".repeat(150), detail: "d", answer: "", topics: ["a", "b", "c", "d"] }]);
+    const [item] = tidyItems([{ kind: "thought", title: "t".repeat(150), detail: "d", answer: "", topics: ["a", "b", "c", "d"], ...noTaskFields }]);
     expect(item.title).toHaveLength(100);
     expect(item.topics).toEqual(["a", "b", "c"]);
   });

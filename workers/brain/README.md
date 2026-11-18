@@ -27,8 +27,24 @@ MCP client ─ OAuth token from this Worker ─▶ OAuthProvider: token checked,
 | `USER.md` | The person's own text and preferences, plus `## Learned in conversation`, written by reflection |
 | `MEMORY.md` | `## Lessons`: how to help this person, as opposed to facts about them |
 | `sessions/<date>-<id>.md` | One note per conversation: a summary and links to what it filed |
-| `ideas/`, `questions/`, `tasks/`, `thoughts/` | One note per dumped item. A question keeps the answer it got |
+| `ideas/`, `questions/`, `tasks/`, `events/`, `thoughts/` | One note per dumped item. A question keeps the answer it got. Tasks and events carry the fields below |
 | `topics/<topic>.md` | `## Filed`: links to every item under that topic. Topics appear as people talk |
+
+### Task and event fields
+
+Each item's note keeps these in its frontmatter, named after iCalendar and JSCalendar where they overlap so a later export is easy. Only the ones that are set are written.
+
+| Field | Meaning |
+| --- | --- |
+| `area` | `work` or `personal` |
+| `who` | `kids` or `grown-ups`, only when they said who it's for |
+| `due` | The day it's due, `YYYY-MM-DD`. Only a date they gave or clearly meant, worked out from the day the conversation started |
+| `start`, `location` | For an event: when (`YYYY-MM-DD` or `YYYY-MM-DDTHH:MM`, London time) and a place name, never an address |
+| `importance` | `low`, `normal` or `high`, when they said so or it clearly is |
+| `inferred` | Which of `area`, `due` and `importance` were worked out rather than stated. The assistant never invents a deadline: when unsure the field stays empty |
+| `status` | `open`, `done` or `dropped`. `completed_at` is added when a task is done |
+
+Ranking (what to show today, the work and personal balance) is not stored. It's worked out when the list is read, so the rules can change without refiling anything.
 
 Every line a reflection adds carries its session's `[[wikilink]]`, so filing a session again replaces its own lines and nothing else. Reflection is structured output with narrow fields, filed by code: the model never writes notes directly.
 
@@ -42,8 +58,9 @@ Every route needs `Authorization: Bearer <WorkOS access token>`, and answers `40
 | `POST /sessions/:id/turns` | `{ "text": "what they said" }`. Streams `text` events with a `delta`, then `done` with `session_ended`, or `error`. Nothing is saved from a turn that errors, so the client can resend it |
 | `POST /sessions/:id/end` | `202` with the session, filed a moment later. `204` when nothing was said, since there's nothing to keep |
 | `GET /sessions/:id` | The transcript, noted facts and `reflection_status`: `not_ended`, `pending`, `done` or `failed` |
-| `GET /notes?kind=` | Every note, newest first. `kind` is one of `user`, `memory`, `session`, `idea`, `question`, `task`, `thought`, `topic` |
+| `GET /notes?kind=` | Every note, newest first, each with its filing `fields`. `kind` is one of `user`, `memory`, `session`, `idea`, `question`, `task`, `event`, `thought`, `topic` |
 | `GET /notes/<path>` | One note, with the notes that link to it in `linked_from` |
+| `PATCH /notes/<path>` | Changes a task or event: `status` (`open`, `done`, `dropped`), `due` (`YYYY-MM-DD` or `null`), `importance` (`low`, `normal`, `high` or `null`) or `area`. `400 invalid_patch` for anything else, `409 not_a_task` for other notes. Every change is a new version |
 | `GET /versions?path=` | Every kept version of a note, newest first |
 | `POST /versions/:id/restore` | Puts a note back to that version, as a new version |
 | `GET /me`, `PATCH /me` | The profile. `PATCH` takes `about` and `preferences`, and keeps what was learned |

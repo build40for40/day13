@@ -3,6 +3,7 @@ import { runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import type { UserBrain } from "./brain";
 import type { Reflection } from "./reflection";
+import { noTaskFields } from "./testing";
 import { addLines, editSection, noteTitle, slugify, topicPath, londonDate, londonDay, MAX_VERSIONS_PER_NOTE, nextLondonMidnight, readLearned, rebuildLinks, replaceAbout, replaceSessionLines, restoreVersion, sessionNotePath, splitLearned, versionsOf, writeConsolidation, writeFile, writeReflection, type ReflectedSession } from "./vault";
 
 const reflection: Reflection = { items: [], summary: "Asked about fake things.", facts: ["Prefers short answers"], lessons: [] };
@@ -133,8 +134,8 @@ describe("filing dumped items", () => {
   const dumped: Reflection = {
     ...reflection,
     items: [
-      { kind: "idea", title: "A fake shed cinema", detail: "Turn the fake shed into a tiny cinema.", answer: "", topics: ["garden", "weekend projects"] },
-      { kind: "question", title: "How long does fake paint take to dry?", detail: "Asked about drying times.", answer: "About four fake hours.", topics: ["garden"] },
+      { kind: "idea", title: "A fake shed cinema", detail: "Turn the fake shed into a tiny cinema.", answer: "", topics: ["garden", "weekend projects"], ...noTaskFields },
+      { kind: "question", title: "How long does fake paint take to dry?", detail: "Asked about drying times.", answer: "About four fake hours.", topics: ["garden"], ...noTaskFields },
     ],
   };
 
