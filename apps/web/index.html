@@ -85,6 +85,10 @@ h2 small { font: 400 14px var(--font); color: var(--mute) }
 .toast { position: fixed; left: 16px; right: 16px; bottom: calc(90px + env(safe-area-inset-bottom, 0px)); max-width: 488px; margin: 0 auto; background: var(--foam); color: var(--water); border-radius: 14px; padding: 12px 14px; font-size: 14px; font-weight: 500; z-index: 5 }
 .toast[hidden] { display: none }
 .fine { color: var(--mute); font-size: 11px; margin: 26px 0 0 }
+#voice-controls { text-align: center; padding: 0 14px 10px; font: 500 13px var(--font) }
+#voice-controls p { margin: 4px 0 }
+#voice-controls a, #voice-controls button { color: var(--water); background: var(--foam); border: 0; border-radius: 999px; padding: 6px 12px; font: inherit; cursor: pointer }
+#voice-controls [hidden] { display: none }
 button:focus-visible, input:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px }
 </style>
 </head>
@@ -102,7 +106,13 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--gold); outl
     <p class="fine">Example data, made up for the Day 13 mind dump.</p>
   </div>
   <div class="bar pad">
-    <form id="f"><input id="in" autocomplete="off" placeholder="Type or open Dumpling voice" aria-label="Dump anything"><button type="button" class="mic" id="mic" aria-label="Tap to talk"><svg class="mk" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><svg class="arrow" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button></form>
+    <form id="f"><input id="in" autocomplete="off" placeholder="Type or tap the mic to talk" aria-label="Dump anything"><button type="button" class="mic" id="mic" aria-label="Talk to Dumpling"><svg class="mk" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><svg class="arrow" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button></form>
+  </div>
+  <div id="voice-controls" hidden>
+    <p id="voice-status" role="status" aria-live="polite"></p>
+    <a id="voice-login" target="_blank" rel="noopener noreferrer" hidden>Sign in with WorkOS</a>
+    <button type="button" id="voice-mute" hidden>Mute microphone</button>
+    <a id="voice-preview" href="https://elevenlabs.io/app/agents/agents/agent_3401m7q8xy4xevs910n2j7t3w5yf/preview" target="_blank" rel="noopener noreferrer" hidden>Open ElevenLabs Preview</a>
   </div>
   <div class="toast" id="toast" hidden></div>
 </div>
@@ -283,23 +293,23 @@ function drop(text) {
   if (!made.length) return; made.forEach((m) => fresh.add(m.id)); sync(); fresh.clear(); toast(`Filed ${made.length}: ` + made.map((i) => `${i.short} → ${isToday(i) ? 'Today' : isTomorrow(i) ? 'Tomorrow' : 'Future'}`).join(', '))
 }
 $('f').addEventListener('submit', (e) => { e.preventDefault(); const v = $('in').value; if (v.trim()) { drop(v); $('in').value = ''; syncMic() } })
-// An empty composer opens the private voice preview. Typed text still files through the prototype.
-const VOICE_PREVIEW = 'https://elevenlabs.io/app/agents/agents/agent_3401m7q8xy4xevs910n2j7t3w5yf/preview'
 function syncMic() {
   const hasText = $('in').value.trim().length > 0
-  $('mic').classList.toggle('send', hasText)
-  $('mic').setAttribute('aria-label', hasText ? 'File it' : 'Open Dumpling voice in ElevenLabs')
+  $('mic').classList.toggle('send', hasText && $('mic').dataset.voiceActive !== 'true')
+  $('mic').setAttribute('aria-label', $('mic').dataset.voiceActive === 'true' ? 'End voice call' : hasText ? 'File it' : 'Talk to Dumpling')
 }
 $('in').addEventListener('input', syncMic)
 $('mic').addEventListener('click', () => {
-  if ($('in').value.trim()) {
+  if ($('mic').dataset.voiceActive !== 'true' && $('in').value.trim()) {
     $('f').requestSubmit()
     return
   }
-  window.open(VOICE_PREVIEW, '_blank', 'noopener,noreferrer')
+  $('mic').dispatchEvent(new Event('dumpling:voice-toggle'))
 })
+$('mic').addEventListener('dumpling:voice-state', syncMic)
 syncMic()
 render()
 </script>
+<script type="module" src="/src/voice.ts"></script>
 </body>
 </html>
