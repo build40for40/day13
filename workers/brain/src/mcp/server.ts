@@ -9,6 +9,7 @@ import { renderTopic } from "../prompt";
 import type { Rpc } from "../types";
 import {
   CAPTURE_TOOL,
+  CONNECTOR_NAME,
   OPEN_BRAIN_TOOL,
   RECALL_TOOL,
   SERVER_INSTRUCTIONS,
@@ -43,7 +44,20 @@ const failed = (value: string) => ({ ...text(value), isError: true });
 
 /** A new server per request: clients share one MCP session across chats and send no conversation id, so nothing is kept between calls. */
 export function createBrainServer(): McpServer {
-  const server = new McpServer({ name: SERVER_NAME, version: "0.1.0" }, { instructions: SERVER_INSTRUCTIONS });
+  const icon = (file: string) => new URL(file, resource).href;
+  const server = new McpServer(
+    {
+      name: SERVER_NAME,
+      title: CONNECTOR_NAME,
+      version: "0.1.0",
+      websiteUrl: resource.origin,
+      icons: [
+        { src: icon("/icon-512.png"), mimeType: "image/png", sizes: ["512x512"] },
+        { src: icon("/favicon.svg"), mimeType: "image/svg+xml", sizes: ["any"] },
+      ],
+    },
+    { instructions: SERVER_INSTRUCTIONS },
+  );
 
   server.registerTool(
     OPEN_BRAIN_TOOL.name,
