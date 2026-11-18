@@ -17,7 +17,7 @@ export interface Check {
 /** Saying it saved something, naming the tools, or asking permission to save. */
 export const NARRATION = [
   /\b(i'?ve|i have|i'?ll|i will|let me|i'?m going to)\s+(just\s+)?(saved?|captured?|noted?|stored?|logged?|filed?|added?)\b(?!\s+(a|an|some|one|more|another)\b)/i,
-  /\b(saved|captured|stored|logged|filed|added)\s+(that|this|it|those|these|them|everything)?\s*(to|in|into)\s+(your\s+)?brain\b/i,
+  /\b(saved|captured|stored|logged|filed|added)\s+(that|this|it|those|these|them|everything)?\s*(to|in|into)\s+(your\s+)?(brain|dumpling)\b/i,
   /\b(want|would you like|shall|should|do you want)\s+(me\s+to\s+)?(save|capture|store|remember|add)\b/i,
   /\b(open_brain|capture tool|recall tool)\b/i,
 ];

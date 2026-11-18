@@ -1,5 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import { OPEN_BRAIN_GUIDE, SKILL_BODY } from "@day13/instructions";
+import { OPEN_BRAIN_GUIDE, SKILL_BODY, SKILL_NAME } from "@day13/instructions";
 import { describe, expect, it } from "vitest";
 import { HarnessError, fakeResult, phrasing, runConversation, type RunSpec } from "./runner.ts";
 import { SCENARIOS, type Scenario } from "./scenarios.ts";
@@ -65,8 +65,8 @@ describe("fakeResult", () => {
     expect(fakeResult("recall", {}, scenario("small-talk")).content).toBe("Nothing found.");
   });
 
-  it("loads the brain skill and errors on anything else", () => {
-    expect(fakeResult("skill", { name: "brain" }, scenario("idea"))).toEqual({ content: SKILL_BODY });
+  it("loads the skill and errors on anything else", () => {
+    expect(fakeResult("skill", { name: SKILL_NAME }, scenario("idea"))).toEqual({ content: SKILL_BODY });
     expect(fakeResult("skill", { name: "other" }, scenario("idea")).is_error).toBe(true);
     expect(fakeResult("unknown", {}, scenario("idea")).is_error).toBe(true);
   });

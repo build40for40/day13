@@ -2,7 +2,7 @@
 
 The target user can't be bothered, so the instructions only work if ChatGPT and Claude open the brain, capture what's said and recall it on their own, and never store what they shouldn't. This is how we check that, in three layers: what a script can check offline, what only the real apps can show, and what nobody can check yet.
 
-The wording under test lives in `instructions/src/index.ts`. Every surface comes from it: tool names and descriptions, the server's `instructions`, what `open_brain` returns, the Claude skill (rendered to `plugin/skills/brain/SKILL.md`) and the custom-instruction lines.
+The wording under test lives in `instructions/src/index.ts`. Every surface comes from it: tool names and descriptions, the server's `instructions`, what `open_brain` returns, the Claude skill (rendered to `plugin/skills/dumpling/SKILL.md`) and the custom-instruction lines.
 
 ## What "works" means
 

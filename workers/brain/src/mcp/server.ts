@@ -7,7 +7,7 @@ import type { ContextSources } from "../prompt";
 import type { Rpc } from "../types";
 import { CAPTURE_TOOL, OPEN_BRAIN_TOOL, RECALL_TOOL, SERVER_INSTRUCTIONS, openBrainText } from "@day13/instructions";
 
-const SERVER_NAME = "day13-brain";
+const SERVER_NAME = "dumpling";
 export const CAPTURED = "Saved. It'll be filed under topics once things go quiet.";
 
 export const MAX_CAPTURE_CHARS = 8_000;

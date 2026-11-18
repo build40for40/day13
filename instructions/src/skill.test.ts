@@ -6,7 +6,7 @@ import { SKILL_PATH, renderSkill } from "./skill.ts";
 describe("the Claude skill", () => {
   it("starts with frontmatter naming the skill and quoting its description", () => {
     const [, frontmatter] = renderSkill().split("---\n");
-    expect(frontmatter).toBe(`name: brain\ndescription: ${JSON.stringify(SKILL_DESCRIPTION)}\n`);
+    expect(frontmatter).toBe(`name: dumpling\ndescription: ${JSON.stringify(SKILL_DESCRIPTION)}\n`);
   });
 
   it("matches the committed SKILL.md, so run `pnpm --filter @day13/instructions skill` after changing the wording", () => {
