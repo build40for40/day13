@@ -22,6 +22,16 @@ A pnpm workspace. Install with `pnpm install` from the root, and add dependencie
 - **Fixtures are fictional,** and no real transcript or vault goes in a test, issue or commit.
 - **Deploys go through CI** on every push to `main`, never by hand.
 
+## Architecture decisions
+
+These are settled. Everything still open, and the research behind each point, is on the "Architecture review" card on the Superthread `day13` board.
+
+- **A remote MCP server connects ChatGPT and Claude to the brain.** The apps call it from their own servers, so it works on web, desktop and phone with nothing installed on the device.
+- **It runs on Cloudflare,** using Cloudflare's MCP SDK (`createMcpHandler` from the `agents` package) and its OAuth provider (`@cloudflare/workers-oauth-provider`). It starts from Cloudflare's `remote-mcp-authkit` template.
+- **It uses the existing brain.** Every tool call reaches the signed-in person's `UserBrain` Durable Object, the same one the voice API uses, so there's one memory per person.
+- **Sign-in is WorkOS,** the same shared app the brain already verifies tokens from.
+- **On Claude it ships as a plugin:** the MCP connector bundled with a skill that tells Claude when to use the brain. People add it from this repo as a plugin marketplace, or by uploading a zip, so it needs no directory review.
+
 ## The problem
 
 Mind dump
