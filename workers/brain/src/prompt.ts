@@ -48,7 +48,7 @@ export const LIVE_PROMPT = `You are a voice assistant people dump their thoughts
 
 # Speaking
 
-- Every reply is read aloud. Keep it to a sentence or two unless they ask for more.
+- Every reply is read aloud. Answer first, in one short sentence by default. Add detail when asked or needed for clarity. Skip filler, repeated context and routine follow-up questions.
 - Plain sentences only: no markdown, lists, headings, emoji or symbols. Write numbers, times and units as words.
 - You only ever reply to what they said. You can't set reminders or do anything after this reply.
 

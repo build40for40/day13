@@ -40,7 +40,7 @@ class AdapterError extends Error {
   }
 }
 
-async function readAnswer(response) {
+async function readAnswer(response, onText) {
   let pending = '';
   let answer = '';
   const stream = response.body.pipeThrough(new TextDecoderStream());
@@ -53,7 +53,10 @@ async function readAnswer(response) {
       const data = frame.split('\n').find(line => line.startsWith('data: '));
       if (!data) continue;
       const event = JSON.parse(data.slice(6));
-      if (event.type === 'text') answer += event.delta;
+      if (event.type === 'text') {
+        answer += event.delta;
+        onText?.(event.delta);
+      }
       if (event.type === 'error') throw new AdapterError(502, 'The brain could not answer.');
       if (event.type === 'done') {
         if (!answer.trim()) throw new AdapterError(502, 'The brain returned an empty answer.');
@@ -108,7 +111,7 @@ export function createAdapter({ token, refreshToken, secret, upstream = brainUrl
     throw new AdapterError(503, 'The previous call has not finished filing. Please try again shortly.');
   }
 
-  async function ask({ conversation_id, question, continuous = false }) {
+  async function ask({ conversation_id, question, continuous = false, onText }) {
     if (busy) throw new AdapterError(409, 'Another question is in progress.');
     busy = true;
     const signal = AbortSignal.timeout(45_000);
@@ -123,7 +126,7 @@ export function createAdapter({ token, refreshToken, secret, upstream = brainUrl
         active = { conversation: conversation_id, id, lastTurn: Date.now(), continuous };
       }
       const response = await call('/sessions/' + active.id + '/turns', signal, { text: question });
-      const { answer, ended } = await readAnswer(response);
+      const { answer, ended } = await readAnswer(response, onText);
       if (ended) active = undefined;
       else active.lastTurn = Date.now();
       return { answer };
@@ -133,21 +136,6 @@ export function createAdapter({ token, refreshToken, secret, upstream = brainUrl
     } finally {
       busy = false;
     }
-  }
-
-  function completion(res, answer, model, stream) {
-    const fields = { id: 'chatcmpl-' + randomUUID(), created: Math.floor(Date.now() / 1000), model };
-    if (!stream) {
-      return { ...fields, object: 'chat.completion',
-        choices: [{ index: 0, message: { role: 'assistant', content: answer }, finish_reason: 'stop' }] };
-    }
-    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store' });
-    const chunk = (delta, finish_reason) => res.write('data: ' + JSON.stringify({
-      ...fields, object: 'chat.completion.chunk', choices: [{ index: 0, delta, finish_reason }],
-    }) + '\n\n');
-    chunk({ role: 'assistant', content: answer }, null);
-    chunk({}, 'stop');
-    res.end('data: [DONE]\n\n');
   }
 
   const expected = Buffer.from('Bearer ' + secret);
@@ -194,9 +182,37 @@ export function createAdapter({ token, refreshToken, secret, upstream = brainUrl
         if (!question || question.length > 8000 || !conversation_id) {
           return reply(400, { error: 'Expected a completed user turn and ElevenLabs conversation ID.' });
         }
-        const { answer } = await ask({ question, conversation_id, continuous: true });
-        const response = completion(res, answer, 'day13-brain', payload.stream === true);
-        if (response) reply(200, response);
+        const fields = {
+          id: 'chatcmpl-' + randomUUID(), created: Math.floor(Date.now() / 1000), model: 'day13-brain',
+        };
+        const turn = { question, conversation_id, continuous: true };
+        if (payload.stream !== true) {
+          const { answer } = await ask(turn);
+          return reply(200, {
+            ...fields, object: 'chat.completion',
+            choices: [{ index: 0, message: { role: 'assistant', content: answer }, finish_reason: 'stop' }],
+          });
+        }
+
+        const chunk = (delta, finish_reason) => res.write('data: ' + JSON.stringify({
+          ...fields, object: 'chat.completion.chunk', choices: [{ index: 0, delta, finish_reason }],
+        }) + '\n\n');
+        await ask({
+          ...turn,
+          onText(content) {
+            if (!content || res.destroyed) return;
+            if (!res.headersSent) {
+              res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store' });
+              chunk({ role: 'assistant', content }, null);
+              return;
+            }
+            chunk({ content }, null);
+          },
+        });
+        if (!res.destroyed) {
+          chunk({}, 'stop');
+          res.end('data: [DONE]\n\n');
+        }
         return;
       }
       const question = typeof payload?.question === 'string' ? payload.question.trim() : '';
@@ -207,6 +223,11 @@ export function createAdapter({ token, refreshToken, secret, upstream = brainUrl
       }
       reply(200, await ask({ question, conversation_id }));
     } catch (error) {
+      if (res.destroyed) return;
+      if (res.headersSent) {
+        res.destroy();
+        return;
+      }
       if (error instanceof AdapterError) return reply(error.status, { error: error.message });
       if (error.name === 'TimeoutError') return reply(504, { error: 'The brain took too long to answer.' });
       reply(502, { error: 'Unable to complete the brain request.' });

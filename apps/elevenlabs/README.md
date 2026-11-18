@@ -15,7 +15,7 @@ Use Node.js 22 or newer. Inject these values through your shell or secret manage
 
 Run `node adapter.mjs`. For a live demo, give the loopback server a controlled HTTPS endpoint. Keep authentication enabled on the ElevenLabs agent because the adapter is bound to a single signed-in vault.
 
-Set the agent's Custom LLM to Chat Completions with model ID `day13-brain`, the adapter HTTPS base URL ending in `/v1`, and the adapter key as a private ElevenLabs API-key secret. Set the agent's system prompt to include `DAY13_CALL_ID={{system__conversation_id}}` and disable fallback models for the demo. ElevenLabs supplies the completed user turn and conversation ID. The adapter forwards the turn to the Worker and returns the brain's reply in Chat Completions format.
+Set the agent's Custom LLM to Chat Completions with model ID `day13-brain`, the adapter HTTPS base URL ending in `/v1`, and the adapter key as a private ElevenLabs API-key secret. Set the agent's system prompt to include `DAY13_CALL_ID={{system__conversation_id}}` and disable fallback models for the demo. ElevenLabs supplies the completed user turn and conversation ID. The adapter forwards the turn to the Worker and streams the brain’s text to ElevenLabs as it arrives in Chat Completions format.
 
 The Worker writes completed turns during the conversation. On a new ElevenLabs conversation, the adapter ends the previous brain session and waits briefly for filing before opening a fresh session. The Worker also ends idle sessions. A fresh call may need a retry if filing exceeds Preview's response timeout. Restarting the adapter loses its in-memory session mapping and rotated refresh token.
 

@@ -7,6 +7,7 @@ const calls = [];
 let turn;
 let session = 0;
 let memory;
+let finishUpdate;
 const server = createAdapter({
   token: 'fake-token', secret,
   request: async (url, options) => {
@@ -20,6 +21,18 @@ const server = createAdapter({
     if (options.method === 'GET') return Response.json({ reflection_status: 'done' });
     turn = JSON.parse(options.body).text;
     const delta = turn.endsWith('?') ? memory : 'Understood.';
+    if (delta === 'Understood.') {
+      return new Response(new ReadableStream({
+        start(controller) {
+          const encode = text => new TextEncoder().encode(text);
+          controller.enqueue(encode('data: {"type":"text","delta":"Understood."}\n\n'));
+          finishUpdate = () => {
+            controller.enqueue(encode('data: {"type":"done","session_ended":false}\n\n'));
+            controller.close();
+          };
+        },
+      }));
+    }
     return new Response('data: ' + JSON.stringify({ type: 'text', delta }) +
       '\n\ndata: {"type":"done","session_ended":false}\n\n');
   },
@@ -28,7 +41,7 @@ server.listen(0, '127.0.0.1');
 await once(server, 'listening');
 const url = 'http://127.0.0.1:' + server.address().port + '/v1/chat/completions';
 const ask = (id, content, stream) => fetch(url, {
-  method: 'POST',
+  method: 'POST', signal: AbortSignal.timeout(5000),
   headers: { Authorization: 'Bearer ' + secret, 'Content-Type': 'application/json' },
   body: JSON.stringify({ stream, messages: [
     { role: 'system', content: 'DAY13_CALL_ID=' + id },
@@ -38,7 +51,17 @@ const ask = (id, content, stream) => fetch(url, {
 try {
   const first = await ask('conv_first', 'Meal prep is on Sunday.', true);
   assert.equal(first.status, 200);
-  assert.match(await first.text(), /Understood\.[\s\S]*\[DONE\]/);
+  const reader = first.body.getReader();
+  const firstChunk = await reader.read();
+  assert.match(new TextDecoder().decode(firstChunk.value), /Understood\./);
+  finishUpdate();
+  let remainder = '';
+  while (true) {
+    const next = await reader.read();
+    if (next.done) break;
+    remainder += new TextDecoder().decode(next.value);
+  }
+  assert.match(remainder, /\[DONE\]/);
   assert.equal(turn, 'Meal prep is on Sunday.');
   const second = await ask('conv_second', 'What day is meal prep?', false);
   assert.equal(second.status, 200);
