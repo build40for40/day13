@@ -1,6 +1,6 @@
 // A typed client for the brain Worker (workers/brain/README.md is the spec). No UI in here.
 
-export type NoteKind = 'user' | 'memory' | 'session' | 'idea' | 'question' | 'task' | 'event' | 'thought' | 'topic'
+export type NoteKind = 'user' | 'memory' | 'session' | 'idea' | 'question' | 'task' | 'event' | 'note' | 'thought' | 'topic' | 'person'
 
 export type Session = { id: string; started_at: string; opening_line?: string }
 
@@ -33,7 +33,7 @@ export type TurnEvent =
 
 export type Brain = {
   startSession(): Promise<Session>
-  /** Streams the reply. Nothing is saved from a turn that errors, so the caller can resend it. */
+  /** Streams the reply. A task or event change can be saved even if the reply errors. */
   turn(sessionId: string, text: string): AsyncIterable<TurnEvent>
   endSession(sessionId: string): Promise<'filing' | 'nothing_said'>
   notes(kind?: NoteKind): Promise<Note[]>
@@ -57,6 +57,7 @@ export function createBrain(opts: { baseUrl?: string; getToken: () => string | P
 
   async function call(path: string, init: RequestInit = {}): Promise<Response> {
     const res = await doFetch(base + path, {
+      cache: 'no-store',
       ...init,
       headers: { ...init.headers, authorization: `Bearer ${await opts.getToken()}`, 'content-type': 'application/json' },
     })

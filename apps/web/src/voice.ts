@@ -90,6 +90,10 @@ const messages: Record<string, string> = {
   NotAllowedError: 'Allow microphone access for this site, then tap the mic again.',
 }
 
+function refreshBrainList() {
+  void window.DumplingBrain?.reload().catch(() => {})
+}
+
 async function toggleVoice() {
   if (busy) return
   busy = true
@@ -122,8 +126,10 @@ async function toggleVoice() {
       connectionType: 'websocket',
       onMessage({ source, message }) {
         if (source === 'user') window.dispatchEvent(new CustomEvent('dumpling:transcript', { detail: message }))
+        else refreshBrainList()
       },
       onDisconnect() {
+        refreshBrainList()
         active = undefined
         setCallState(false)
         show('Call ended.')

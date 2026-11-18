@@ -41,7 +41,7 @@ describe("tidying the task fields", () => {
 
 describe("what the reflection reads", () => {
   it("includes the day the conversation started, so tomorrow can be dated", () => {
-    const text = renderInput({ user: { preferences: {}, about: "" }, memory: null, topics: [], turns: [], facts: [], today: "2026-11-18, Wednesday 18 November" });
+    const text = renderInput({ user: { preferences: {}, about: "" }, memory: null, topics: [], entries: [], today: "2026-11-18, Wednesday 18 November" });
     expect(text).toContain("# Conversation date\n\n2026-11-18, Wednesday 18 November");
   });
 });
@@ -59,7 +59,7 @@ describe("filing tasks and events", () => {
       const task = state.storage.sql.exec<{ path: string; frontmatter: string; body: string }>("SELECT path, frontmatter, body FROM files WHERE kind = 'task'").one();
       expect(task.path).toBe("tasks/2026-11-18-pick-up-the-fake-costume.md");
       expect(JSON.parse(task.frontmatter)).toMatchObject({ due: "2026-11-19", importance: "high", area: "personal", people: ["the kids"], location: "school", status: "open", inferred: ["importance"] });
-      expect(task.body).toContain("Due 2026-11-19. Where: school. Who: the kids.");
+      expect(task.body).toContain("Due 2026-11-19. Where: school. Who: [[people/kids|the kids]].");
       const event = state.storage.sql.exec<{ path: string; frontmatter: string }>("SELECT path, frontmatter FROM files WHERE kind = 'event'").one();
       expect(event.path).toBe("events/2026-11-18-fake-school-concert.md");
       expect(JSON.parse(event.frontmatter)).toMatchObject({ start: "2026-11-21T19:30", status: "open" });
@@ -74,12 +74,43 @@ describe("the notes API for tasks", () => {
     mockClaude({ content: [{ type: "text", text: "Noted." }] });
     await api(`/sessions/${id}/turns`, { sub, method: "POST", body: { text: "I need to pick up the costume tomorrow, it matters a lot" } });
     await api(`/sessions/${id}/end`, { sub, method: "POST" });
-    const output = { summary: "Fake.", items: [item({ title: "Pick up the fake costume", due: "2026-11-19", importance: "high", inferred: ["importance"] })], facts: [], lessons: [] };
+    const output = { summary: "Fake.", items: [item({ title: "Pick up the fake costume", due: "2026-11-19", importance: "high", inferred: ["importance"] })] };
     mockClaude({ content: [{ type: "text", text: JSON.stringify(output) }] });
     await runDurableObjectAlarm(brainFor(sub));
     const tasks = (await (await api("/notes?kind=task", { sub })).json()) as { notes: NoteSummary[] };
     return tasks.notes[0].path;
   }
+
+  it("commits task and event changes during a voice turn, visible through the web notes API", async () => {
+    const sub = fakeUser();
+    const { id } = await (await api("/sessions", { sub, method: "POST" })).json() as { id: string };
+    const paths = await runInDurableObject(brainFor(sub), (brain: UserBrain) => {
+      const task = brain.addItem({ kind: "task", title: "Pick up the fake costume" });
+      const event = brain.addItem({ kind: "event", title: "Fake concert", start: "2026-11-22" });
+      if (typeof task === "string" || typeof event === "string") throw new Error("Couldn't seed test notes");
+      return { task: task.path, event: event.path };
+    });
+
+    const model = mockClaude(
+      { stop_reason: "tool_use", content: [
+        { type: "tool_use", name: "list_tasks", input: {} },
+        { type: "tool_use", name: "list_events", input: {} },
+      ] },
+      { stop_reason: "tool_use", content: [
+        { type: "tool_use", name: "update_task", input: { path: paths.task, due: "2026-11-20" } },
+        { type: "tool_use", name: "update_event", input: { path: paths.event, start: "2026-11-20T18:00" } },
+      ] },
+      { content: [{ type: "text", text: "Both moved to Friday." }] },
+    );
+    const reply = await api(`/sessions/${id}/turns`, { sub, method: "POST", body: { text: "Move picking up the fake costume and the fake concert to Friday. The concert is at six." } });
+    expect(await reply.text()).toContain("event: done");
+    expect(model.requests[0].tools).toEqual(expect.arrayContaining([expect.objectContaining({ name: "update_task" }), expect.objectContaining({ name: "update_event" })]));
+
+    const task = await (await api(`/notes/${paths.task}`, { sub })).json();
+    const event = await (await api(`/notes/${paths.event}`, { sub })).json();
+    expect(task).toMatchObject({ fields: { due: "2026-11-20" } });
+    expect(event).toMatchObject({ fields: { start: "2026-11-20T18:00" } });
+  });
 
   it("lists the filing fields with each task", async () => {
     const sub = fakeUser();
@@ -130,7 +161,9 @@ describe("the migration that adds events", () => {
       sql.exec("DROP TABLE files");
       sql.exec("CREATE TABLE files (path TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('user', 'memory', 'session', 'idea', 'question', 'task', 'thought', 'topic')), frontmatter TEXT NOT NULL DEFAULT '{}', body TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL)");
       sql.exec("INSERT INTO files (path, kind, frontmatter, body, updated_at) VALUES ('tasks/old.md', 'task', '{\"status\":\"open\"}', '# Old fake task', '2026-11-01T00:00:00Z')");
-      sql.exec("DELETE FROM schema_migrations WHERE version = 2");
+      sql.exec("DROP TABLE batches");
+      sql.exec("DROP TABLE entries");
+      sql.exec("DELETE FROM schema_migrations WHERE version >= 2");
       expect(() => sql.exec("INSERT INTO files (path, kind, updated_at) VALUES ('events/x.md', 'event', 'now')")).toThrow();
 
       expect(migrate(sql, "2026-11-18T10:00:00Z")).toBe(1);

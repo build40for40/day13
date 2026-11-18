@@ -3,7 +3,8 @@ import type { JsonValue } from "./profile";
 /** A tool the assistant ran during a turn. */
 export interface ToolCall {
   id: string;
-  name: "note" | "recall";
+  name: string;
+  changed?: true;
   input: { [key: string]: JsonValue };
 }
 

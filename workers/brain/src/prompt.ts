@@ -14,14 +14,31 @@ export interface Note {
   body: string;
 }
 
+export interface TopicSource {
+  path: string;
+  items: number;
+  /** work, personal or mixed, worked out from what's filed there. */
+  area?: string;
+  summary?: string;
+}
+
+const MAX_TOPIC_SUMMARY_CHARS = 240;
+
+/** One line of the index of topics: where it is, how much it holds and where it stands. */
+export function renderTopic({ path, items, area, summary }: TopicSource): string {
+  const size = `${items} ${items === 1 ? "item" : "items"}`;
+  const stands = summary && summary.length > MAX_TOPIC_SUMMARY_CHARS ? `${summary.slice(0, MAX_TOPIC_SUMMARY_CHARS)}…` : summary;
+  return `- ${path} (${[size, area].filter(Boolean).join(", ")})${stands ? `: ${stands}` : ""}`;
+}
+
 export interface ContextSources {
   user: { preferences: Preferences; about: string };
   /** The body of MEMORY.md, when there is one. */
   memory: string | null;
   /** Notes from earlier conversations, newest first. */
   sessionNotes: Note[];
-  /** Topic notes and how many items each holds, biggest first. */
-  topics: { path: string; items: number }[];
+  /** Topic notes and how many items each holds, biggest first, with where each stands when it has a summary. */
+  topics: TopicSource[];
   /** The newest filed items, newest first. */
   recent: { path: string; title: string }[];
   /** The paths of the reference notes `recall` can look up. */
@@ -44,6 +61,7 @@ export const LIVE_PROMPT = `You are a voice assistant people dump their thoughts
 - Acknowledge what they dump in a few words and leave room for the next thing. Don't summarise it back or ask them to organise it.
 - When they ask a question, answer it briefly and well. When they want to think something through, help, then get out of the way.
 - When they ask what they said about something before, look it up with recall and tell them.
+- For explicit requests to add, list, or change a task or event, use the matching task or event tool immediately. For a change, find the existing item with list_tasks or list_events first, and update its exact path. Ask one short question if several items match. Use the London date below to resolve dates like Friday. Confirm the change only after the tool succeeds.
 - When they ask what to do next, act as their executive assistant. Use their profile, open commitments, deadlines, dependencies, and recent conversations. Use recall when those details are missing from the current context.
 - Pick one concrete action. Prioritise hard deadlines, meaningful consequences, and work that unblocks other people. Respect the time they say they have. If the most important task is too big, give the first useful step that fits. If they give no time budget, default to a short step because they are often pressed for time.
 - For a next-action request, your entire spoken reply is one short sentence: action first, then one reason after “because”. For example: “Send the launch owner a quick note because their reply will unblock the next step.” Do any recall silently. Omit preambles, caveats, alternatives and invitations to follow up. If you cannot choose without a missing fact, ask just the question that resolves it. Never invent an obligation, deadline or blocker.
@@ -53,7 +71,7 @@ export const LIVE_PROMPT = `You are a voice assistant people dump their thoughts
 
 - Every reply is read aloud. Answer first, in one short sentence by default. Add detail when asked or needed for clarity. Skip filler, repeated context and routine follow-up questions.
 - Plain sentences only: no markdown, lists, headings, emoji or symbols. Write numbers, times and units as words.
-- You only ever reply to what they said. You can't set reminders or do anything after this reply.
+- You only ever reply to what they said. You can manage tasks and events in the Brain during the reply. You can't set reminders or take external actions.
 
 # What they say
 
@@ -79,7 +97,7 @@ export function assembleContext({ user, memory, sessionNotes, topics, recent, re
     section("USER.md", [`Preferences: ${JSON.stringify(user.preferences)}`, user.about.trim()].filter(Boolean).join("\n\n")),
     section("MEMORY.md", memory?.trim() || "Nothing yet."),
     section("Your last conversations, newest first", sessionNotes.length ? sessionNotes.map(renderNote).join("\n\n") : "None yet: this is the first time you've talked."),
-    section("Topics their notes are filed under", topics.length ? topics.map((t) => `- ${t.path} (${t.items} ${t.items === 1 ? "item" : "items"})`).join("\n") : "None yet."),
+    section("Topics their notes are filed under", topics.length ? topics.map(renderTopic).join("\n") : "None yet."),
     section("Newest filed items", recent.length ? recent.map((r) => `- ${r.path}: ${r.title}`).join("\n") : "None yet."),
     section("Reference notes recall can look up", reference.length ? reference.map((path) => `- ${path}`).join("\n") : "None."),
     section("This conversation", `It started at ${time} on ${today}, UK time. You opened with "${OPENING_LINE}"`),
