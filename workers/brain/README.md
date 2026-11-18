@@ -17,7 +17,7 @@ voice client ─ WorkOS access token ─▶ Worker: auth first, routes
 MCP client ─ OAuth token from this Worker ─▶ OAuthProvider: token checked, props.sub
                                                 │ USER_BRAIN.idFromName(sub)
                                                 ▼
-                                             UserBrain: getBrief, capture, recall
+                                             UserBrain: getBrief, capture, recall, getNote, addItem, listItems, updateNote
 ```
 
 ## The vault
@@ -79,6 +79,13 @@ A stateless MCP server at `MCP_RESOURCE` (`https://dumpling.build40for40.com/mcp
 | `open_brain` | Read only. How to use the brain, then what a voice session would start from: USER.md, MEMORY.md, the last conversations, topics and the newest items |
 | `capture` | Saves one thing the person said. Captures gather in one open session with no replies, which is filed like any conversation once it's quiet for 30 minutes, reaches 40 captures, passes London midnight or a voice session starts |
 | `recall` | Read only. The same search the voice `recall` tool runs |
+| `read_note` | Read only. One note in full by its path, with its fields and the notes that link to it |
+| `add_task`, `add_event` | Files one to-do or event straight away, already sorted by the AI that added it. An event needs a start. An area nobody gave is filed as `personal` and listed in `inferred` |
+| `list_tasks` | Read only. To-dos by `status` (open unless asked), `area` and `due_by`, dated ones first. Open lists end with what's captured but not filed yet |
+| `list_events` | Read only. Events still on from today, or between `from` and `to`, soonest first |
+| `update_task`, `update_event` | Changes status, due date, importance or area on a to-do, and start, location, status or area on an event. Each refuses a note of the other kind |
+
+`capture` and the two add tools overlap on purpose: a clear to-do or a dated event is added directly so it's on the list at once, and everything else is captured and filed later. Each reflection is shown the open to-dos and events and told not to file one again, which covers an AI that sends the same thing both ways.
 
 The wording the model sees (server instructions, tool descriptions and the guide `open_brain` starts with) lives in the `@day13/instructions` workspace package (`instructions/` at the repo root), which the evals in `evals/` test too.
 

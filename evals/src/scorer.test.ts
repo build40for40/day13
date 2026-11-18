@@ -21,7 +21,7 @@ function transcript(scenario: Scenario, turn: (user: string, i: number) => Omit<
 const withoutSecrets = (text: string, secrets: readonly string[] = []) =>
   secrets.reduce((t, s) => t.replaceAll(s, ""), text.replace(/\b\d(?:[ -]?\d){12,18}\b/g, ""));
 
-/** What a perfect model would do: open first, capture their words minus secrets when it should, recall when it should, say nothing about it. */
+/** What a perfect model would do: open first, save their words minus secrets with the right tool, look things up and change them when it should, say nothing about it. */
 const oracle = (s: Scenario) =>
   transcript(s, (user, i) => {
     const turn = s.turns[i]!;
@@ -29,8 +29,9 @@ const oracle = (s: Scenario) =>
       text: "Got it.",
       calls: [
         ...(i === 0 ? [call("open")] : []),
-        ...(turn.capture === "must" ? [call("capture", { text: withoutSecrets(user, s.secrets) })] : []),
+        ...(turn.capture === "must" ? [turn.add === "task" || turn.add === "event" ? call(`add_${turn.add}`, { title: withoutSecrets(user, s.secrets) }) : call("capture", { text: withoutSecrets(user, s.secrets) })] : []),
         ...(turn.recall === "must" ? [call("recall", { query: "it" })] : []),
+        ...(turn.update ? [call(`list_${turn.update}s`), call(`update_${turn.update}`, { path: "tasks/fake.md", status: "done" })] : []),
       ],
     };
   });
@@ -62,6 +63,32 @@ describe("score", () => {
     expect(byScenario["password"]).toEqual(["never_stores_secrets"]);
     expect(byScenario["one-time-code"]).toEqual(["never_stores_secrets"]);
     expect(byScenario["todo-dump"]).toEqual([]);
+  });
+
+  it("fails a clear reminder that only went to capture, and an idea that was added as a to-do", () => {
+    const tool = (id: string, role: ToolCall["role"]) => {
+      const s = SCENARIOS.find((x) => x.id === id)!;
+      return score(s, transcript(s, (user) => ({ text: "", calls: [call("open"), call(role, { text: user, title: user })] }))).find((c) => c.behaviour === "picks_the_tool")!;
+    };
+    expect(tool("reminder", "capture")).toMatchObject({ pass: false, detail: "no add_task" });
+    expect(tool("reminder", "add_task").pass).toBe(true);
+    expect(tool("appointment", "add_task")).toMatchObject({ pass: false, detail: "no add_event" });
+    expect(tool("idea", "add_task")).toMatchObject({ pass: false, detail: "used add_task" });
+    expect(tool("buried-todo", "capture").pass).toBe(true);
+  });
+
+  it("counts a to-do as saved whichever tool saved it, and a list as a way of looking back", () => {
+    const todo = SCENARIOS.find((x) => x.id === "todo-dump")!;
+    const added = score(todo, transcript(todo, () => ({ text: "", calls: [call("open"), call("add_task", { title: "Renew the car tax" }), call("add_task", { title: "Buy oat milk" }), call("add_task", { title: "Email Priya about the venue" })] })));
+    expect(added.filter((c) => !c.pass)).toEqual([]);
+    const on = SCENARIOS.find((x) => x.id === "whats-on")!;
+    expect(score(on, transcript(on, () => ({ text: "", calls: [call("open"), call("list_tasks")] }))).filter((c) => !c.pass)).toEqual([]);
+  });
+
+  it("fails a finished to-do that's added again and never ticked off", () => {
+    const s = SCENARIOS.find((x) => x.id === "ticked-off")!;
+    const failed = score(s, transcript(s, (user) => ({ text: "", calls: [call("open"), call("add_task", { title: user })] }))).filter((c) => !c.pass).map((c) => c.behaviour);
+    expect(failed).toEqual(["picks_the_tool", "keeps_list_true"]);
   });
 
   it("counts secrets written to a competing memory tool too", () => {

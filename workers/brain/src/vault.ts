@@ -189,6 +189,48 @@ function sessionEntries(sessionLink: string, entries: string[]) {
  * Writes one dumped item as its own note and returns its path. The path comes from the London day and the title, with a
  * number added when another session already has that path, so a rerun of the same session lands on the same note.
  */
+/** The line in a task or event's body that says when, where and who, so recall finds them. */
+export function fieldsLine(fields: { due?: JsonValue; start?: JsonValue; location?: JsonValue; people?: JsonValue }): string {
+  const people = Array.isArray(fields.people) ? fields.people : [];
+  return [fields.due ? `Due ${fields.due}.` : "", fields.start ? `When: ${fields.start}.` : "", fields.location ? `Where: ${fields.location}.` : "", people.length ? `Who: ${people.join(", ")}.` : ""].filter(Boolean).join(" ");
+}
+
+const FIELDS_LINE = /^(Due \d{4}-\d{2}-\d{2}\.|When: \d{4}-\d{2}-\d{2}|Where: |Who: )/;
+const AFTER_FIELDS = /^(## |Filed under \[\[|From \[\[)/;
+
+/** Swaps the fields line of a task or event's body for a new one, adding it after the detail when there wasn't one. */
+export function withFieldsLine(body: string, line: string): string {
+  const blocks = body.trimEnd().split("\n\n");
+  const at = blocks.findIndex((block, i) => i > 0 && FIELDS_LINE.test(block));
+  if (at !== -1) blocks.splice(at, 1, ...(line ? [line] : []));
+  else if (line) {
+    const before = blocks.findIndex((block, i) => i > 0 && AFTER_FIELDS.test(block));
+    blocks.splice(before === -1 ? blocks.length : before, 0, line);
+  }
+  return `${blocks.join("\n\n")}\n`;
+}
+
+function itemFrontmatter(item: DumpItem, origin: Frontmatter): Frontmatter {
+  const fields: Frontmatter = { area: item.area, due: item.due, start: item.start, location: item.location, importance: item.importance };
+  const present = Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== "" && v !== undefined));
+  const frontmatter: Frontmatter = { kind: item.kind, ...origin, topics: item.topics, ...(present as Frontmatter) };
+  if (item.kind === "task" || item.kind === "event") frontmatter.status = "open";
+  if (item.people.length) frontmatter.people = item.people;
+  if (item.inferred.length) frontmatter.inferred = item.inferred;
+  return frontmatter;
+}
+
+/** Files a task or event the moment it's added, without waiting for a reflection. Returns its path. */
+export function writeAddedItem(sql: SqlStorage, item: DumpItem, now: string, actor: string): string {
+  const date = londonDate(now);
+  const base = `${ITEM_FOLDERS[item.kind]}/${date}-${slugify(item.title)}`;
+  let path = `${base}.md`;
+  for (let n = 2; readFile(sql, path); n++) path = `${base}-${n}.md`;
+  const body = [`# ${item.title}`, item.detail, fieldsLine(item)].filter(Boolean).join("\n\n").concat("\n");
+  writeFile(sql, path, item.kind, itemFrontmatter(item, { date, added_by: actor }), body, now, actor);
+  return path;
+}
+
 function writeItem(sql: SqlStorage, session: ReflectedSession, item: DumpItem, now: string, claimed: Set<string>): string {
   const base = `${ITEM_FOLDERS[item.kind]}/${londonDate(session.started_at)}-${slugify(item.title)}`;
   const takenByAnother = (path: string) => {
@@ -202,20 +244,14 @@ function writeItem(sql: SqlStorage, session: ReflectedSession, item: DumpItem, n
   const body = [
     `# ${item.title}`,
     item.detail,
-    [item.due ? `Due ${item.due}.` : "", item.start ? `When: ${item.start}.` : "", item.location ? `Where: ${item.location}.` : "", item.people.length ? `Who: ${item.people.join(", ")}.` : ""].filter(Boolean).join(" "),
+    fieldsLine(item),
     item.answer ? `## Answer\n\n${item.answer}` : "",
     [topics.length ? `Filed under ${topics.join(", ")}.` : "", `From ${wikilink(sessionNotePath(session))}.`].filter(Boolean).join(" "),
   ]
     .filter(Boolean)
     .join("\n\n")
     .concat("\n");
-  const fields: Frontmatter = { area: item.area, due: item.due, start: item.start, location: item.location, importance: item.importance };
-  const present = Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== "" && v !== undefined));
-  const frontmatter: Frontmatter = { kind: item.kind, session_id: session.id, date: londonDate(session.started_at), topics: item.topics, ...(present as Frontmatter) };
-  if (item.kind === "task" || item.kind === "event") frontmatter.status = "open";
-  if (item.people.length) frontmatter.people = item.people;
-  if (item.inferred.length) frontmatter.inferred = item.inferred;
-  writeFile(sql, path, item.kind, frontmatter, body, now, `session:${session.id}`);
+  writeFile(sql, path, item.kind, itemFrontmatter(item, { session_id: session.id, date: londonDate(session.started_at) }), body, now, `session:${session.id}`);
   return path;
 }
 

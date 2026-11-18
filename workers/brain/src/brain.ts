@@ -7,12 +7,12 @@ import { USER_MD, type JsonValue, type Preferences, type Profile, type ProfilePa
 import { assembleContext, MAX_RECENT_ITEMS, MAX_SESSION_NOTES, MAX_TOPICS, OPENING_LINE, type ContextSources, type Note } from "./prompt";
 import { renderRecall, search, type SearchableNote } from "./recall";
 import { REFERENCE } from "./reference";
-import { isRetryable, reflect, type Reflection } from "./reflection";
+import { isRetryable, reflect, tidyItems, type Area, type Importance, type Reflection } from "./reflection";
 import { migrate } from "./schema";
 import { starterAbout, starterPreferences } from "./seed";
 import { appendUserText, runTurn } from "./turn";
 import type { StreamEvent, Turn } from "./types";
-import { londonDate, londonDay, londonTime, MEMORY_MD, nextLondonMidnight, noteTitle, readFile, readLearned, replaceAbout, restoreVersion, splitLearned, versionsOf, writeConsolidation, writeFile, writeReflection, type NoteKind, type NoteVersion } from "./vault";
+import { londonDate, londonDay, londonTime, MEMORY_MD, nextLondonMidnight, fieldsLine, noteTitle, readFile, readLearned, replaceAbout, restoreVersion, splitLearned, versionsOf, withFieldsLine, writeAddedItem, writeConsolidation, writeFile, writeReflection, type NoteKind, type NoteVersion } from "./vault";
 
 /** A session ends when the person has been quiet this long, in case the client never says it's done. */
 export const IDLE_MINUTES = 30;
@@ -25,6 +25,8 @@ export const REFLECTION_RETRY_MINUTES = [1, 5, 30, 120];
 const REFLECTION_TIMEOUT_MS = 10 * 60_000;
 const ITEM_KINDS_SQL = "('idea', 'question', 'task', 'event', 'thought')";
 const CAPTURE_SESSION = "capture_session";
+/** How many open to-dos and events a reflection is shown, so it doesn't file one twice. */
+const MAX_EXISTING_ITEMS = 40;
 
 const SSE_HEADERS = { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform" };
 export const TURN_FAILED = "Sorry, I lost the thread there. Could you say that again?";
@@ -101,6 +103,32 @@ export interface NotePatch {
   due?: string | null;
   importance?: "low" | "normal" | "high" | null;
   area?: "work" | "personal";
+  /** Events only. */
+  start?: string;
+  location?: string | null;
+}
+
+export type DatedKind = "task" | "event";
+
+/** A to-do or event added directly, already sorted by whoever added it. */
+export interface NewItem {
+  kind: DatedKind;
+  title: string;
+  detail?: string;
+  due?: string;
+  start?: string;
+  location?: string;
+  importance?: Exclude<Importance, "">;
+  area?: Area;
+  people?: string[];
+}
+
+/** Every to-do or event, with what's been captured but not filed yet, since that may hold more. */
+export interface ItemList {
+  notes: NoteSummary[];
+  unfiled: string[];
+  /** The London day, as YYYY-MM-DD. */
+  today: string;
 }
 
 export interface NoteView extends NoteSummary {
@@ -298,24 +326,59 @@ export class UserBrain extends DurableObject<Env> {
     return { ...noteSummary(row), frontmatter: JSON.parse(row.frontmatter), body: row.body, linked_from: linkedFrom.map((l) => l.src) };
   }
 
-  /** Changes a task or event's status, due date, importance or area, keeping the version. Done tasks get a `completed_at`. */
-  updateNote(path: string, patch: NotePatch): NoteView | "note_not_found" | "not_a_task" {
+  /** Files a to-do or event straight away, for when the person asked for exactly that. An area nobody gave is filed as personal and marked inferred. */
+  addItem(item: NewItem): NoteView | "invalid_item" {
+    this.init();
+    const [tidy] = tidyItems([
+      {
+        kind: item.kind,
+        title: item.title,
+        detail: item.detail ?? "",
+        answer: "",
+        topics: [],
+        area: item.area ?? "personal",
+        people: item.people ?? [],
+        due: item.kind === "task" ? (item.due ?? "") : "",
+        start: item.start ?? "",
+        location: item.location ?? "",
+        importance: item.importance ?? "",
+        inferred: item.area ? [] : ["area"],
+      },
+    ]);
+    if (!tidy || (tidy.kind === "event" && !tidy.start)) return "invalid_item";
+    const path = this.ctx.storage.transactionSync(() => writeAddedItem(this.sql, tidy, new Date().toISOString(), "mcp"));
+    return this.getNote(path)!;
+  }
+
+  listItems(kind: DatedKind): ItemList {
+    this.init();
+    return { notes: this.listNotes(kind), unfiled: this.unfiledCaptures().map((capture) => capture.text), today: londonDate(new Date().toISOString()) };
+  }
+
+  /**
+   * Changes a task or event's status, due date, importance or area, and an event's start or location, keeping the version.
+   * Done tasks get a `completed_at`. `only` refuses a note of the other kind.
+   */
+  updateNote(path: string, patch: NotePatch, only?: DatedKind): NoteView | "note_not_found" | "not_a_task" {
     this.init();
     const row = this.sql.exec<FileRow>("SELECT * FROM files WHERE path = ?", path).toArray()[0];
     if (!row) return "note_not_found";
-    if (row.kind !== "task" && row.kind !== "event") return "not_a_task";
+    if ((row.kind !== "task" && row.kind !== "event") || (only && row.kind !== only)) return "not_a_task";
     const now = new Date().toISOString();
     const frontmatter: Record<string, JsonValue> = JSON.parse(row.frontmatter);
-    for (const key of ["due", "importance"] as const) {
+    const clearable = row.kind === "event" ? (["due", "importance", "location"] as const) : (["due", "importance"] as const);
+    for (const key of clearable) {
       if (key in patch) patch[key] === null || patch[key] === undefined ? delete frontmatter[key] : (frontmatter[key] = patch[key]);
     }
+    if (patch.start && row.kind === "event") frontmatter.start = patch.start;
     if (patch.area) frontmatter.area = patch.area;
     if (patch.status) {
       frontmatter.status = patch.status;
       if (patch.status === "done") frontmatter.completed_at = now;
       else delete frontmatter.completed_at;
     }
-    this.ctx.storage.transactionSync(() => writeFile(this.sql, path, row.kind as NoteKind, frontmatter, row.body, now, "user"));
+    const body = withFieldsLine(row.body, fieldsLine(frontmatter));
+    this.ctx.storage.transactionSync(() => writeFile(this.sql, path, row.kind as NoteKind, frontmatter, body, now, "user"));
     return this.getNote(path)!;
   }
 
@@ -473,6 +536,7 @@ export class UserBrain extends DurableObject<Env> {
       turns: JSON.parse(row.turns),
       facts: JSON.parse(row.facts),
       today: `${londonDate(row.started_at)}, ${londonDay(row.started_at)}`,
+      existing: this.openItemTitles(),
     });
     const note = this.ctx.storage.transactionSync(() => {
       const current = this.getSessionRow(row.id);
@@ -484,6 +548,13 @@ export class UserBrain extends DurableObject<Env> {
       return path;
     });
     console.log(JSON.stringify({ event: "brain_reflection", session_id: row.id, note, items: reflection.items.length, total_ms: Date.now() - started, usage }));
+  }
+
+  private openItemTitles(): string[] {
+    const rows = this.sql
+      .exec<FileRow>("SELECT * FROM files WHERE kind IN ('task', 'event') AND json_extract(frontmatter, '$.status') = 'open' ORDER BY updated_at DESC, path LIMIT ?", MAX_EXISTING_ITEMS)
+      .toArray();
+    return rows.map((row) => [noteTitle(row.path, row.body), fieldsLine(JSON.parse(row.frontmatter))].filter(Boolean).join(". "));
   }
 
   // Consolidation

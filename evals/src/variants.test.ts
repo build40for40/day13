@@ -21,13 +21,14 @@ describe("buildSurface", () => {
 
   it("renames and strips the tools for the bare variant but keeps their roles", () => {
     const surface = buildSurface(VARIANTS["claude-bare-tools"]!);
-    expect(surface.roles).toEqual({ open: "open", save: "capture", search: "recall" });
+    expect(surface.roles).toMatchObject({ open: "open", save: "capture", search: "recall", read: "read", add_task: "add_task", update_event: "update_event" });
+    expect(Object.keys(surface.roles)).toHaveLength(10);
     expect(JSON.stringify(surface.tools)).not.toMatch(/Brain|without asking/);
   });
 
   it("hides the brain behind tool search when deferred", () => {
     const { tools } = buildSurface(VARIANTS["claude-tools-deferred"]!);
-    expect(tools.flatMap((t) => ("defer_loading" in t && t.defer_loading && "name" in t ? [t.name] : []))).toEqual(["open_brain", "capture", "recall"]);
+    expect(tools.flatMap((t) => ("defer_loading" in t && t.defer_loading && "name" in t ? [t.name] : []))).toEqual(["open_brain", "capture", "recall", "read_note", "add_task", "list_tasks", "update_task", "add_event", "list_events", "update_event"]);
     expect(tools.at(-1)).toEqual({ type: "tool_search_tool_bm25_20251119", name: "tool_search_tool_bm25" });
   });
 

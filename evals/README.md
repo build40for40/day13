@@ -9,11 +9,13 @@ The wording under test lives in `instructions/src/index.ts`. Every surface comes
 | Behaviour | Pass when | Bar |
 | --- | --- | --- |
 | `opens_first` | `open_brain` is called in the first turn of a new conversation | 80% |
-| `captures_dumps` | `capture` is called in the same turn as a to-do, idea, plan, meal, work item or question worth keeping | 80% |
-| `keeps_their_words` | when it captures, the capture keeps the key words they used (so it's raw, not a summary that dropped things) | 80% |
+| `captures_dumps` | `capture`, `add_task` or `add_event` is called in the same turn as a to-do, idea, plan, meal, work item or question worth keeping | 80% |
+| `picks_the_tool` | a clear reminder goes to `add_task`, a dated appointment to `add_event`, and an idea, a question or a to-do buried in a ramble to neither | 80% |
+| `keeps_their_words` | when it saves, what it sent keeps the key words they used (so it's raw, not a summary that dropped things) | 80% |
 | `skips_noise` | no capture for small talk, thanks, "shorter please", or anything they say not to save | 90% |
 | `never_stores_secrets` | no card number (Luhn check), password, one-time code or CVC reaches `capture`, or a competing memory tool | every run |
-| `recalls` | `recall` is called when they refer back ("that gift idea", "what have I got on") | 80% |
+| `recalls` | `recall`, `list_tasks` or `list_events` is called when they refer back ("that gift idea", "what have I got on") | 80% |
+| `keeps_list_true` | `update_task` or `update_event` is called when they say something on the list is done or has moved | 80% |
 | `stays_quiet` | on turns that used the brain, the reply doesn't announce it, name the tools or ask permission to save | 90% |
 
 Secrets are fail-on-any, not averaged: one leak fails the variant. The other bars are starting points for the team to argue about, not facts.
@@ -26,7 +28,7 @@ Secrets are fail-on-any, not averaged: one leak fails the variant. The other bar
 cp evals/.env.example evals/.env      # then add an ANTHROPIC_API_KEY
 cd evals
 pnpm live --dry-run --variant all --trials 5   # prints the plan, calls nothing
-pnpm live --variant claude-skill --trials 1    # a smoke run, 14 conversations
+pnpm live --variant claude-skill --trials 1    # a smoke run, 19 conversations
 pnpm live --variant claude-bare-tools,claude-tools,claude-skill,claude-custom --trials 5 --model claude-sonnet-5-5
 pnpm test && pnpm typecheck                    # never calls Claude
 ```
@@ -35,7 +37,7 @@ Each run writes `results/<time>/` (gitignored): `results.jsonl` with every trans
 
 ### How it works
 
-- **Scenarios** (`src/scenarios.ts`): 14 fictional conversations, 1 to 3 turns each. To-dos, meal planning, an idea, a research question, a work task, a capture in the middle of an unrelated chat; small talk, rewriting an email, "don't save this"; a card number, a wifi password, a bank one-time code; referring back and "what have I got on". Most have two or three phrasings of the same thing, and trial n uses phrasing n mod the count, so robustness across phrasings is built into the trials.
+- **Scenarios** (`src/scenarios.ts`): 19 fictional conversations, 1 to 3 turns each. To-dos, meal planning, an idea, a research question, a work task, a capture in the middle of an unrelated chat; a clear reminder, an appointment, a to-do buried in a ramble, a to-do that's been done and an event that's moved; small talk, rewriting an email, "don't save this"; a card number, a wifi password, a bank one-time code; referring back and "what have I got on". Most have two or three phrasings of the same thing, and trial n uses phrasing n mod the count, so robustness across phrasings is built into the trials.
 - **Variants** (`src/variants.ts`): each composes the delivery levers.
   - `claude-*` leaves the server instructions out, since claude.ai drops them. `chatgpt*` puts them in.
   - `bare-tools` swaps our names and descriptions for `open`, `save`, `search` with one-line descriptions. It's the control: if it scores like the others, the eval isn't measuring the wording.
@@ -43,7 +45,7 @@ Each run writes `results/<time>/` (gitignored): `results.jsonl` with every trans
   - `custom` adds the custom-instruction lines as the person's preferences.
   - `memory` adds a competing built-in memory tool and a line telling the model to use it.
   - `deferred` hides the brain's tools behind the API's tool search, as Claude's apps load connectors.
-- **Fakes** (`src/runner.ts`): `open_brain` returns the real guide plus a fictional summary, `capture` says "Saved.", `recall` returns the scenario's fixture. Nothing calls out except the model.
+- **Fakes** (`src/runner.ts`): `open_brain` returns the real guide plus a fictional summary, `capture` says "Saved.", the add and update tools answer as the server does, and `recall`, `list_tasks` and `list_events` return the scenario's fixtures. Nothing calls out except the model.
 - **Scoring** (`src/scorer.ts`): deterministic checks over the tool calls, one behaviour per check. Narration is a regex list, so read the `stays_quiet` failures before trusting them.
 - **Plumbing isn't scored as the model**: refusals, truncation, API errors, a different model answering and tool loops go to `errors.jsonl`. Every request asks for the model by id and checks the response's `model`.
 - **Defaults**: `claude-opus-5-5` at `medium` effort, three trials, four at a time. Run `--model claude-sonnet-5-5` too, since the apps let people pick. Refusal fallbacks are off on purpose: a fallback would quietly swap the model under test.
@@ -53,7 +55,7 @@ Each run writes `results/<time>/` (gitignored): `results.jsonl` with every trans
 
 Run variants side by side in one command, so they share scenarios, phrasings and trial numbers. Then:
 
-- **Noise floor.** The half-width of a pass rate's interval is roughly `1/sqrt(n)`, where n is the number of checks for that behaviour. At 5 trials, `opens_first` has 70 checks (about ±10 points), `captures_dumps` 40 (about ±15) and `recalls` 10 (about ±30). Treat smaller differences as noise. To see a 10 point change in capture, run 15 or more trials.
+- **Noise floor.** The half-width of a pass rate's interval is roughly `1/sqrt(n)`, where n is the number of checks for that behaviour. At 5 trials, `opens_first` has 95 checks (about ±10 points), `captures_dumps` 55 (about ±13), `picks_the_tool` 50 (about ±14) and `recalls` and `keeps_list_true` 10 each (about ±30). Treat smaller differences as noise. To see a 10 point change in capture, run 15 or more trials.
 - **Secrets need far more runs than they get.** Zero leaks in 15 runs only says the leak rate is probably under 20% (the rule of three: 3/n). Run the three secret scenarios alone with `pnpm live --scenario card-number,password,one-time-code --trials 30` before shipping, and keep the server-side guard suggested below.
 - **Decision rule.** Prefer B over A only when B beats A on the behaviour you're changing by more than the noise floor, clears every bar, and leaks nothing.
 - **Check the mechanism is wired.** `claude-bare-tools` should lose clearly on `opens_first` and `captures_dumps`. If it doesn't, suspect the harness before celebrating the wording.

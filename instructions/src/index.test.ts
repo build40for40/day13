@@ -16,14 +16,33 @@ describe("the brain's wording", () => {
 
   it("puts every rule ChatGPT needs in the first 512 characters of the server instructions", () => {
     const head = SERVER_INSTRUCTIONS.slice(0, 512);
-    for (const phrase of ["without being asked", "open_brain", "start of every conversation", "capture", "their own words", "recall", "Never capture", "passwords", "quietly"]) {
+    for (const phrase of ["without being asked", "open_brain", "start of every conversation", "add_task", "add_event", "capture", "their own words", "recall", "Never capture", "passwords", "quietly"]) {
       expect(head).toContain(phrase);
     }
   });
 
-  it("marks the reading tools read-only and capture as a write", () => {
+  it("marks the reading tools read-only and the saving and changing tools as writes", () => {
     const hints = Object.fromEntries(BRAIN_TOOLS.map((t) => [t.name, t.annotations.readOnlyHint]));
-    expect(hints).toEqual({ [TOOL_NAMES.open]: true, [TOOL_NAMES.capture]: false, [TOOL_NAMES.recall]: true });
+    expect(hints).toEqual({
+      [TOOL_NAMES.open]: true,
+      [TOOL_NAMES.capture]: false,
+      [TOOL_NAMES.recall]: true,
+      [TOOL_NAMES.readNote]: true,
+      [TOOL_NAMES.addTask]: false,
+      [TOOL_NAMES.listTasks]: true,
+      [TOOL_NAMES.updateTask]: false,
+      [TOOL_NAMES.addEvent]: false,
+      [TOOL_NAMES.listEvents]: true,
+      [TOOL_NAMES.updateEvent]: false,
+    });
+  });
+
+  it("tells every saving tool when to use another one instead, and never to save twice", () => {
+    const description = (name: string) => BRAIN_TOOLS.find((t) => t.name === name)!.description;
+    expect(description(TOOL_NAMES.capture)).toMatch(/add_task.*add_event.*never both/);
+    expect(description(TOOL_NAMES.addTask)).toMatch(/use capture instead\. Never use both/);
+    expect(description(TOOL_NAMES.addEvent)).toMatch(/use capture instead\..*add_task.*Never use both/);
+    for (const name of [TOOL_NAMES.addTask, TOOL_NAMES.addEvent]) expect(description(name)).toMatch(/Never include card or bank numbers, passwords/);
   });
 
   it("names every tool in snake case and requires every field it can't do without", () => {
