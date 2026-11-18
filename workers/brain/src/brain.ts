@@ -14,7 +14,7 @@ import { migrate } from "./schema";
 import { starterAbout, starterPreferences } from "./seed";
 import { appendUserText, runTurn } from "./turn";
 import type { StreamEvent, ToolCall, Turn } from "./types";
-import { filedBy, londonDate, londonDay, londonTime, MEMORY_MD, nextLondonMidnight, fieldsLine, noteTitle, readFile, readLearned, replaceAbout, restoreVersion, splitLearned, versionsOf, withFieldsLine, writeAddedItem, writeConsolidation, writeFile, writeReflection, type NoteKind, type NoteVersion } from "./vault";
+import { filedBy, londonDate, londonDay, londonTime, MEMORY_MD, nextLondonMidnight, fieldsLine, noteTitle, readFile, readLearned, replaceAbout, restoreVersion, splitLearned, summaryOf, versionsOf, withFieldsLine, writeAddedItem, writeConsolidation, writeFile, writeReflection, type NoteKind, type NoteVersion } from "./vault";
 
 /** A voice session ends when the person has been quiet this long, in case the client never says it's done. */
 export const IDLE_MINUTES = 30;
@@ -25,7 +25,7 @@ export const DAILY_TURN_CAP = 200;
 /** How long to wait before trying a failed filing pass again, by attempt. After the last one a closed batch is saved as failed. */
 export const REFLECTION_RETRY_MINUTES = [1, 5, 30, 120];
 const REFLECTION_TIMEOUT_MS = 10 * 60_000;
-const ITEM_KINDS_SQL = "('idea', 'question', 'task', 'event', 'thought')";
+const ITEM_KINDS_SQL = "('idea', 'question', 'task', 'event', 'note', 'thought')";
 /** How many open to-dos and events a reflection is shown, so it doesn't file one twice. */
 const MAX_EXISTING_ITEMS = 40;
 
@@ -393,7 +393,7 @@ export class UserBrain extends DurableObject<Env> {
       if (patch.status === "done") frontmatter.completed_at = now;
       else delete frontmatter.completed_at;
     }
-    const body = withFieldsLine(row.body, fieldsLine(frontmatter));
+    const body = withFieldsLine(row.body, fieldsLine(frontmatter, true));
     this.ctx.storage.transactionSync(() => writeFile(this.sql, path, row.kind as NoteKind, frontmatter, body, now, "user"));
     return this.getNote(path)!;
   }
@@ -505,8 +505,8 @@ export class UserBrain extends DurableObject<Env> {
     const { preferences, about } = this.readUserMd();
     const sessionNotes = this.sql.exec<FileRow>("SELECT path, frontmatter, body FROM files WHERE kind = 'session' ORDER BY path DESC LIMIT ?", MAX_SESSION_NOTES).toArray();
     const topics = this.sql
-      .exec<{ path: string; items: number }>(
-        `SELECT f.path, (SELECT COUNT(*) FROM links l WHERE l.src = f.path AND l.kind IN ${ITEM_KINDS_SQL}) AS items
+      .exec<{ path: string; items: number; area: string | null; body: string }>(
+        `SELECT f.path, f.body, json_extract(f.frontmatter, '$.area') AS area, (SELECT COUNT(*) FROM links l WHERE l.src = f.path AND l.kind IN ${ITEM_KINDS_SQL}) AS items
          FROM files f WHERE f.kind = 'topic' ORDER BY items DESC, f.path LIMIT ?`,
         MAX_TOPICS,
       )
@@ -516,7 +516,7 @@ export class UserBrain extends DurableObject<Env> {
       user: { preferences, about },
       memory: readFile(this.sql, MEMORY_MD)?.body ?? null,
       sessionNotes: sessionNotes as Note[],
-      topics,
+      topics: topics.map(({ path, items, area, body }) => ({ path, items, ...(area ? { area } : {}), ...(summaryOf(body) ? { summary: summaryOf(body) } : {}) })),
       recent: recent.map((row) => ({ path: row.path, title: noteTitle(row.path, row.body) })),
       reference: REFERENCE.map((note) => note.path),
       time: londonTime(at),
@@ -561,11 +561,14 @@ export class UserBrain extends DurableObject<Env> {
   private async fileBatch(client: Anthropic, batch: BatchRow, settling: boolean): Promise<void> {
     const started = Date.now();
     const { preferences, about } = this.readUserMd();
-    const topics = this.sql.exec<{ topic: string }>("SELECT json_extract(frontmatter, '$.topic') AS topic FROM files WHERE kind = 'topic' ORDER BY path").toArray();
+    const topics = this.sql.exec<{ topic: string; body: string }>("SELECT json_extract(frontmatter, '$.topic') AS topic, body FROM files WHERE kind = 'topic' ORDER BY path").toArray().filter((t) => t.topic);
+    const people = this.sql.exec<{ name: string; body: string }>("SELECT json_extract(frontmatter, '$.name') AS name, body FROM files WHERE kind = 'person' ORDER BY path").toArray().filter((p) => p.name);
     const { reflection, usage } = await (settling ? reflect : draft)(client, {
       user: { preferences, about },
       memory: readFile(this.sql, MEMORY_MD)?.body ?? null,
-      topics: topics.map((t) => t.topic).filter(Boolean),
+      topics: topics.map((t) => t.topic),
+      topicSummaries: Object.fromEntries(topics.map((t) => [t.topic, summaryOf(t.body)]).filter(([, summary]) => summary)),
+      people: people.map((p) => ({ name: p.name, summary: summaryOf(p.body) })),
       entries: batchEntries(this.sql, batch.id, batch.last_entry_id),
       filed: filedBy(this.sql, batch.id),
       today: `${londonDate(batch.started_at)}, ${londonDay(batch.started_at)}`,

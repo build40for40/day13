@@ -71,7 +71,7 @@ describe("a dump, start to finish", () => {
     const next = await startSession(sub);
     const later = mockClaude({ content: [{ type: "text", text: "Hello again." }] });
     await say(sub, next.id, "Hiya");
-    expect(later.requests[0].system[1].text).toContain("- topics/garden.md (2 items)");
+    expect(later.requests[0].system[1].text).toContain("- topics/garden.md (2 items, personal): Planning to turn the fake shed into a cinema. Paint is next.");
     expect(later.requests[0].system[1].text).toContain("A fake shed cinema");
   });
 

@@ -14,14 +14,31 @@ export interface Note {
   body: string;
 }
 
+export interface TopicSource {
+  path: string;
+  items: number;
+  /** work, personal or mixed, worked out from what's filed there. */
+  area?: string;
+  summary?: string;
+}
+
+const MAX_TOPIC_SUMMARY_CHARS = 240;
+
+/** One line of the index of topics: where it is, how much it holds and where it stands. */
+export function renderTopic({ path, items, area, summary }: TopicSource): string {
+  const size = `${items} ${items === 1 ? "item" : "items"}`;
+  const stands = summary && summary.length > MAX_TOPIC_SUMMARY_CHARS ? `${summary.slice(0, MAX_TOPIC_SUMMARY_CHARS)}…` : summary;
+  return `- ${path} (${[size, area].filter(Boolean).join(", ")})${stands ? `: ${stands}` : ""}`;
+}
+
 export interface ContextSources {
   user: { preferences: Preferences; about: string };
   /** The body of MEMORY.md, when there is one. */
   memory: string | null;
   /** Notes from earlier conversations, newest first. */
   sessionNotes: Note[];
-  /** Topic notes and how many items each holds, biggest first. */
-  topics: { path: string; items: number }[];
+  /** Topic notes and how many items each holds, biggest first, with where each stands when it has a summary. */
+  topics: TopicSource[];
   /** The newest filed items, newest first. */
   recent: { path: string; title: string }[];
   /** The paths of the reference notes `recall` can look up. */
@@ -80,7 +97,7 @@ export function assembleContext({ user, memory, sessionNotes, topics, recent, re
     section("USER.md", [`Preferences: ${JSON.stringify(user.preferences)}`, user.about.trim()].filter(Boolean).join("\n\n")),
     section("MEMORY.md", memory?.trim() || "Nothing yet."),
     section("Your last conversations, newest first", sessionNotes.length ? sessionNotes.map(renderNote).join("\n\n") : "None yet: this is the first time you've talked."),
-    section("Topics their notes are filed under", topics.length ? topics.map((t) => `- ${t.path} (${t.items} ${t.items === 1 ? "item" : "items"})`).join("\n") : "None yet."),
+    section("Topics their notes are filed under", topics.length ? topics.map(renderTopic).join("\n") : "None yet."),
     section("Newest filed items", recent.length ? recent.map((r) => `- ${r.path}: ${r.title}`).join("\n") : "None yet."),
     section("Reference notes recall can look up", reference.length ? reference.map((path) => `- ${path}`).join("\n") : "None."),
     section("This conversation", `It started at ${time} on ${today}, UK time. You opened with "${OPENING_LINE}"`),

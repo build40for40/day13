@@ -48,8 +48,9 @@ Until a pass has read them, entries show up as "not filed yet" in `recall` and i
 | `USER.md` | The person's own text and preferences, plus `## Learned in conversation`, written by reflection |
 | `MEMORY.md` | `## Lessons`: how to help this person, as opposed to facts about them |
 | `sessions/<date>-<id>.md` | One note per batch of the log: a summary and links to what it filed |
-| `ideas/`, `questions/`, `tasks/`, `events/`, `thoughts/` | One note per dumped item. A question keeps the answer it got. Tasks and events carry the fields below |
-| `topics/<topic>.md` | `## Filed`: links to every item under that topic. Topics appear as people talk |
+| `ideas/`, `questions/`, `tasks/`, `events/`, `notes/`, `thoughts/` | One note per dumped item. A question keeps the answer it got. A note is a fact or finding worth looking up again, and a thought is anything else. Tasks and events carry the fields below |
+| `topics/<topic>.md` | `## Summary`: where the topic stands now, rewritten each time something is filed there. `## Filed`: links to every item under it. Topics appear as people talk. Frontmatter has `type` (`topic` or `project`) and `area` |
+| `people/<name>.md` | The same two sections for each person an item names, by first name or plain role. Items link to them from their `Who:` line |
 
 ### Task and event fields
 
@@ -67,6 +68,8 @@ Each item's note keeps these in its frontmatter, named after iCalendar and JSCal
 
 Ranking (what to show today, the work and personal balance) is not stored. It's worked out when the list is read, so the rules can change without refiling anything.
 
+A page's `area` is worked out from what's filed on it: `work`, `personal`, or `mixed` once it holds both. Summaries come from the settle pass that closes a batch: it's shown each page's summary so far and returns the new one for every topic and person it touched. The quick pass leaves summaries as they are.
+
 Filing is structured output with narrow fields, filed by code: the model never writes notes directly.
 
 ## API
@@ -79,7 +82,7 @@ Every route needs `Authorization: Bearer <WorkOS access token>`, and answers `40
 | `POST /sessions/:id/turns` | `{ "text": "what they said" }`. Streams `text` events with a `delta`, then `done` with `session_ended`, or `error`. If the reply fails after a task or event write, that completed change is kept. Check the current list before retrying |
 | `POST /sessions/:id/end` | `202` with the session, and what was said in it is filed a moment later. `204` when nothing was said, since there's nothing to keep |
 | `GET /sessions/:id` | The transcript, noted facts and `reflection_status`: `not_ended`, `pending`, `done` once a pass has filed everything said in it, or `failed` |
-| `GET /notes?kind=` | Every note, newest first, each with its filing `fields`. `kind` is one of `user`, `memory`, `session`, `idea`, `question`, `task`, `event`, `thought`, `topic` |
+| `GET /notes?kind=` | Every note, newest first, each with its filing `fields`. `kind` is one of `user`, `memory`, `session`, `idea`, `question`, `task`, `event`, `note`, `thought`, `topic`, `person` |
 | `GET /notes/<path>` | One note, with the notes that link to it in `linked_from` |
 | `PATCH /notes/<path>` | Changes a task or event: `status` (`open`, `done`, `dropped`), `due` (`YYYY-MM-DD` or `null`), `importance` (`low`, `normal`, `high` or `null`) or `area`. `400 invalid_patch` for anything else, `409 not_a_task` for other notes. Every change is a new version |
 | `GET /versions?path=` | Every kept version of a note, newest first |
@@ -97,7 +100,7 @@ A stateless MCP server at `MCP_RESOURCE` (`https://dumpling.build40for40.com/mcp
 
 | Tool | What it does |
 | --- | --- |
-| `open_brain` | Read only. How to use the brain, then what a voice session would start from: USER.md, MEMORY.md, the last conversations, topics and the newest items |
+| `open_brain` | Read only. How to use the brain, then what a voice session would start from: USER.md, MEMORY.md, the last conversations, topics with their area and summary, and the newest items |
 | `capture` | Saves one thing the person said by adding it to the log, with the app's name as its source. It's filed with everything else, about a minute later |
 | `recall` | Read only. The same search the voice `recall` tool runs |
 | `read_note` | Read only. One note in full by its path, with its fields and the notes that link to it |

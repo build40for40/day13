@@ -17,7 +17,7 @@ const MAX_DETAIL = 2_000;
 const MAX_TOPICS = 3;
 const MAX_TOPIC = 40;
 
-export const ITEM_KINDS = ["idea", "question", "task", "event", "thought"] as const;
+export const ITEM_KINDS = ["idea", "question", "task", "event", "note", "thought"] as const;
 export type ItemKind = (typeof ITEM_KINDS)[number];
 
 /** Which part of their life an item belongs to, so work and personal can be mixed and still told apart. */
@@ -58,10 +58,25 @@ export interface DumpItem {
   inferred: Inferable[];
 }
 
+export const PAGE_KINDS = ["topic", "person"] as const;
+export type PageKind = (typeof PAGE_KINDS)[number];
+
+/** How one topic or person stands after this batch of the log, to be written at the top of their page. */
+export interface PageNote {
+  kind: PageKind;
+  /** The topic, or the person as an item's `people` names them. */
+  name: string;
+  summary: string;
+  /** For a topic: whether it's something with an end they're working towards, like a trip or a launch. */
+  project: boolean;
+}
+
 /** What one batch of the log leaves behind. Every field is filed somewhere by `writeReflection` (vault.ts). */
 export interface Reflection {
   summary: string;
   items: DumpItem[];
+  /** Absent on reflections saved before pages had summaries. */
+  pages?: PageNote[];
   facts: string[];
   lessons: string[];
 }
@@ -70,6 +85,10 @@ export interface ReflectionInput {
   user: { preferences: Preferences; about: string };
   /** The topics already in the vault, so new items reuse them. */
   topics: string[];
+  /** The summary each topic's page has so far, by topic. */
+  topicSummaries?: Record<string, string>;
+  /** The people who already have a page, with its summary so far. */
+  people?: { name: string; summary: string }[];
   /** The body of MEMORY.md, when there is one. */
   memory: string | null;
   /** The batch's log: everything said, in order, wherever it was said. */
@@ -99,7 +118,7 @@ const list = (description: string) => ({ type: "array", description, items: { ty
 export const reflectionSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["summary", "items", "facts", "lessons"],
+  required: ["summary", "items", "pages", "facts", "lessons"],
   properties: {
     summary: { type: "string", description: "One or two sentences on what this conversation was about and how it ended, written as a note to your future self." },
     items: {
@@ -110,7 +129,7 @@ export const reflectionSchema = {
         additionalProperties: false,
         required: ["kind", "title", "detail", "answer", "topics", "area", "people", "due", "start", "location", "importance", "inferred"],
         properties: {
-          kind: { type: "string", enum: [...ITEM_KINDS], description: "idea: something they might make or do. question: something they asked or wondered. task: something they need to do. event: something happening at a time or place they need to be at. thought: anything else worth keeping." },
+          kind: { type: "string", enum: [...ITEM_KINDS], description: "idea: something they might make or do. question: something they asked or wondered. task: something they need to do. event: something happening at a time or place they need to be at. note: a fact or finding they'd look up again, like a quote, a measurement or what they decided. thought: anything else worth keeping." },
           title: { type: "string", description: "A short title they'd recognise, under ten words." },
           detail: { type: "string", description: "What they said about it, tidied into plain sentences in their own words. Keep every specific they gave." },
           answer: { type: "string", description: "For a question, the gist of the answer they were given in the conversation. Empty when there wasn't one, and for every other kind." },
@@ -122,6 +141,21 @@ export const reflectionSchema = {
           location: { type: "string", description: "A place name like school or the dentist, never an address. Empty when none was mentioned." },
           importance: { type: "string", enum: [...IMPORTANCE], description: "How much it matters, when they said so or it clearly does, like a hard deadline or a consequence they named. Empty when unknown." },
           inferred: { type: "array", items: { type: "string", enum: [...INFERABLE] }, description: "The fields among area, due and importance that you worked out and they didn't state. Empty when they stated every one you filled in." },
+        },
+      },
+    },
+    pages: {
+      type: "array",
+      description: "One entry for every topic you filed an item under and every person an item names in people. Nothing else.",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["kind", "name", "summary", "project"],
+        properties: {
+          kind: { type: "string", enum: [...PAGE_KINDS] },
+          name: { type: "string", description: "The topic, or the person exactly as the item's people names them." },
+          summary: { type: "string", description: "Two or three sentences on where this topic or person stands now. Start from the existing summary when there is one, add what's new and correct what's changed. Say how things stand, don't list the items." },
+          project: { type: "boolean", description: "For a topic, true when it's something with an end they're working towards, like a trip, a move or a launch. False for an ongoing part of life, and for every person." },
         },
       },
     },
@@ -144,9 +178,11 @@ You get the person's profile (USER.md), the lessons kept so far (MEMORY.md), the
 - When they change their mind, file where they ended up as one item, not both versions.
 - If you're shown what was already filed from this log, file the same things under the same titles unless what they said has changed them, and leave out the ones the person has since changed themselves.
 
-- Split what they said into items, one per separate idea, question, task or thought. Everything they'd want to find again gets an item.
+- Split what they said into items, one per separate idea, question, task, event, note or thought. Everything they'd want to find again gets an item.
 - File each item under one to three topics. Reuse an existing topic whenever it fits, so the same things end up together; only start a new one when nothing fits.
 - Facts are lasting things about the person themselves, not the items they dumped.
+- Every topic and every person has a page that opens with a summary. Write a page entry for each topic you file under and each person an item names, so the page says where things stand now and not only what was filed.
+- A person's summary says who they are to the person and what's going on with them, from what's been said and nothing more.
 
 - Give every item an area, work or personal. Fill in people only when they said who it's for or with.
 - A due date is one they gave or clearly meant. Work it out from the conversation date, and write it as YYYY-MM-DD. For an event, put when it happens in start and where in location, as a place name only. Leave a field empty when they didn't say.
@@ -161,7 +197,7 @@ You get the person's profile (USER.md), the lessons kept so far (MEMORY.md), the
 
 export const DRAFT_PROMPT = `${REFLECTION_PROMPT}
 
-This log is still open and they may say more. File the items it holds so far. Facts and lessons wait until it's finished.`;
+This log is still open and they may say more. File the items it holds so far. Page entries, facts and lessons wait until it's finished.`;
 
 export function reflectionRequest(input: ReflectionInput): Anthropic.MessageCreateParamsNonStreaming {
   return structuredRequest(REFLECTION_PROMPT, renderInput(input), reflectionSchema);
@@ -183,14 +219,16 @@ export function structuredRequest(system: string, content: string, schema: objec
   };
 }
 
-export function renderInput({ user, memory, topics, entries, filed = [], today, existing }: ReflectionInput): string {
+export function renderInput({ user, memory, topics, topicSummaries, people, entries, filed = [], today, existing }: ReflectionInput): string {
+  const summarised = (name: string, summary?: string) => (summary ? `- ${name}: ${summary}` : `- ${name}`);
   const section = (title: string, body: string) => `# ${title}\n\n${body}`;
   const facts = notedFacts(entries);
   return [
     section("USER.md", [`Preferences: ${JSON.stringify(user.preferences)}`, user.about.trim()].filter(Boolean).join("\n\n")),
     section("MEMORY.md", memory?.trim() || "Nothing yet."),
     ...(today ? [section("Conversation date", today)] : []),
-    section("Existing topics", topics.length ? topics.map((t) => `- ${t}`).join("\n") : "None yet."),
+    section("Existing topics", topics.length ? topics.map((t) => summarised(t, topicSummaries?.[t])).join("\n") : "None yet."),
+    ...(people?.length ? [section("People who already have a page", people.map((p) => summarised(p.name, p.summary)).join("\n"))] : []),
     ...(existing?.length ? [section("Open to-dos and events already filed", existing.map((e) => `- ${e}`).join("\n"))] : []),
     ...(filed.length ? [section("Already filed from this log", filed.map((f) => `- ${f.title} (${f.kind})${f.changed ? ": they've since changed this one themselves, so leave it out" : ""}`).join("\n"))] : []),
     section("Log", renderLog(entries) || "Nothing was said."),
@@ -217,7 +255,8 @@ export function notedFacts(entries: LoggedLine[]): string[] {
 /** Runs the reflection: one Opus call whose structured output is checked and tidied before anything is written. */
 export async function reflect(client: Anthropic, input: ReflectionInput): Promise<{ reflection: Reflection; usage: Anthropic.Usage }> {
   const { output, usage } = await structured<Reflection>(client, reflectionRequest(input), validator);
-  return { reflection: { summary: tidyText(output.summary), items: tidyItems(output.items), facts: tidyList(output.facts), lessons: tidyList(output.lessons) }, usage };
+  const items = tidyItems(output.items);
+  return { reflection: { summary: tidyText(output.summary), items, pages: tidyPages(output.pages ?? [], items), facts: tidyList(output.facts), lessons: tidyList(output.lessons) }, usage };
 }
 
 /** The quick pass over a batch that's still open: items only, on the cheaper model, checked and tidied the same way. */
@@ -238,6 +277,19 @@ function tidyFields(item: DumpItem): Pick<DumpItem, "area" | "people" | "due" | 
   const filled: Record<Inferable, string> = { area, due, importance };
   const inferred = [...new Set(Array.isArray(item.inferred) ? item.inferred : [])].filter((f): f is Inferable => (INFERABLE as readonly string[]).includes(f) && filled[f] !== "");
   return { area, people, due, start, location, importance, inferred };
+}
+
+/** Keeps one entry per topic or person that an item was actually filed under, named the way the items name them. */
+export function tidyPages(pages: PageNote[], items: DumpItem[]): PageNote[] {
+  const names: Record<PageKind, string[]> = { topic: [...new Set(items.flatMap((i) => i.topics))], person: [...new Set(items.flatMap((i) => i.people))] };
+  const kept = new Map<string, PageNote>();
+  for (const page of pages) {
+    if (!(PAGE_KINDS as readonly string[]).includes(page.kind) || typeof page.name !== "string" || typeof page.summary !== "string") continue;
+    const name = names[page.kind].find((n) => n.toLowerCase() === page.name.trim().replace(/\s+/g, " ").toLowerCase());
+    const summary = tidyText(page.summary);
+    if (name && summary && !kept.has(`${page.kind}:${name}`)) kept.set(`${page.kind}:${name}`, { kind: page.kind, name, summary, project: page.kind === "topic" && page.project === true });
+  }
+  return [...kept.values()];
 }
 
 /** Trims every field to its limit, lowercases and dedupes topics, and drops items with no title. */

@@ -1,13 +1,13 @@
 import type { JsonValue } from "./profile";
 import { USER_MD } from "./profile";
-import type { DumpItem, ItemKind, Reflection } from "./reflection";
+import type { DumpItem, ItemKind, PageNote, Reflection } from "./reflection";
 import { linkKind, parseWikilinks, wikilink } from "./wikilinks";
 
-export type NoteKind = "user" | "memory" | "session" | ItemKind | "topic";
+export type NoteKind = "user" | "memory" | "session" | ItemKind | "topic" | "person";
 
-export const NOTE_KINDS: readonly NoteKind[] = ["user", "memory", "session", "idea", "question", "task", "event", "thought", "topic"];
+export const NOTE_KINDS: readonly NoteKind[] = ["user", "memory", "session", "idea", "question", "task", "event", "note", "thought", "topic", "person"];
 
-const ITEM_FOLDERS: Record<ItemKind, string> = { idea: "ideas", question: "questions", task: "tasks", event: "events", thought: "thoughts" };
+const ITEM_FOLDERS: Record<ItemKind, string> = { idea: "ideas", question: "questions", task: "tasks", event: "events", note: "notes", thought: "thoughts" };
 const MAX_SLUG = 60;
 
 type Frontmatter = { [key: string]: JsonValue };
@@ -42,6 +42,9 @@ export interface NoteVersion {
 
 /** The heading in a topic note that lists the items filed under it. */
 export const FILED = "Filed";
+
+/** The heading in a topic or person note that says where things stand. Rewritten whenever something new is filed there. */
+export const SUMMARY = "Summary";
 
 /** The heading in USER.md that the reflection writes under. The user's own text sits outside it and is never touched. */
 export const LEARNED = "Learned in conversation";
@@ -82,6 +85,52 @@ export function slugify(text: string): string {
 }
 
 export const topicPath = (topic: string) => `topics/${slugify(topic)}.md`;
+/** "the kids" and "kids" are the same page. */
+export const personPath = (name: string) => `people/${slugify(name.replace(/^the\s+/i, ""))}.md`;
+
+type Area = "work" | "personal" | "mixed";
+
+/** A page's area is worked out from what's filed on it: one area, or mixed once it holds both. */
+export function mergeArea(current: JsonValue | undefined, areas: string[]): Area | undefined {
+  const seen = new Set<string>([...(current === "mixed" ? ["work", "personal"] : typeof current === "string" ? [current] : []), ...areas].filter((a) => a === "work" || a === "personal"));
+  return seen.size > 1 ? "mixed" : ([...seen][0] as Area | undefined);
+}
+
+/** Puts a summary at the top of a topic or person note, above everything filed there. */
+export function withSummary(body: string, summary: string): string {
+  if (!summary) return body;
+  const lines = body.replace(/\s+$/, "").split("\n");
+  if (lines.includes(`## ${SUMMARY}`)) return editSection(body, SUMMARY, () => [summary]);
+  const at = lines.findIndex((line) => line.startsWith("## "));
+  const head = (at === -1 ? lines : lines.slice(0, at)).join("\n").replace(/\s+$/, "");
+  const rest = at === -1 ? "" : lines.slice(at).join("\n");
+  return `${[head, `## ${SUMMARY}\n\n${summary}`, rest].filter(Boolean).join("\n\n")}\n`;
+}
+
+/** The summary a topic or person note opens with, or nothing when it has none yet. */
+export const summaryOf = (body: string) => sectionLines(body, SUMMARY).join(" ");
+
+interface Filing {
+  kind: "topic" | "person";
+  path: string;
+  name: string;
+  /** The lines to list under Filed, replacing any that hold `key`. */
+  lines: string[];
+  key: string;
+  areas: string[];
+  page?: PageNote;
+}
+
+/** Lists items on a topic or person's page, creating it when it's new, and brings its summary and area up to date in the same version. */
+function fileOnPage(sql: SqlStorage, { kind, path, name, lines, key, areas, page }: Filing, now: string, actor: string): void {
+  const current = readFile(sql, path);
+  const frontmatter: Frontmatter = { ...(current?.frontmatter ?? (kind === "topic" ? { topic: name } : { name })) };
+  const area = mergeArea(frontmatter.area, areas);
+  if (area) frontmatter.area = area;
+  if (kind === "topic" && page) frontmatter.type = page.project ? "project" : "topic";
+  const filed = editSection(current?.body ?? `# ${name}\n`, FILED, replaceSessionLines(key, lines));
+  writeFile(sql, path, kind, frontmatter, withSummary(filed, page?.summary ?? ""), now, actor);
+}
 
 /** The first heading of a note, or its path when it has none. */
 export function noteTitle(path: string, body: string): string {
@@ -112,6 +161,8 @@ interface Filed {
   kind: string;
   title: string;
   topics: string[];
+  people: string[];
+  area: string;
 }
 
 /**
@@ -131,7 +182,7 @@ export function writeReflection(sql: SqlStorage, session: ReflectedSession, now:
   const claimed = new Set(kept.map((note) => note.path));
   const written: Filed[] = reflection.items.flatMap((item) => {
     const path = writeItem(sql, session, item, now, claimed);
-    return path ? [{ path, kind: item.kind, title: item.title, topics: item.topics }] : [];
+    return path ? [{ path, kind: item.kind, title: item.title, topics: item.topics, people: item.people, area: item.area }] : [];
   });
   const filed = [...written, ...kept];
   const wanted = new Set(filed.map((note) => note.path));
@@ -139,15 +190,30 @@ export function writeReflection(sql: SqlStorage, session: ReflectedSession, now:
 
   writeFile(sql, sessionPath, "session", { session_id: session.id, date: londonDate(session.started_at) }, sessionBody(session, filed), now, actor);
 
-  const linked = sql.exec<{ topic: string }>("SELECT json_extract(frontmatter, '$.topic') AS topic FROM files WHERE kind = 'topic' AND instr(body, ?) > 0", sessionLink).toArray();
-  for (const topic of new Set([...filed.flatMap((note) => note.topics), ...linked.map((row) => row.topic).filter(Boolean)])) {
-    const path = topicPath(topic);
-    const lines = filed.filter((note) => note.topics.includes(topic)).map((note) => `- ${wikilink(note.path, note.title)} (${sessionLink})`);
-    const current = readFile(sql, path);
-    if (!current && !lines.length) continue;
-    const body = editSection(current?.body ?? `# ${topic}\n`, FILED, replaceSessionLines(sessionLink, lines));
-    if (current && !sectionLines(body, FILED).length && onlyWrittenBy(sql, path, actor)) deleteFile(sql, path, now, actor);
-    else writeFile(sql, path, "topic", current?.frontmatter ?? { topic }, body, now, actor);
+  const pageFor = (kind: PageNote["kind"], name: string) => reflection.pages?.find((page) => page.kind === kind && page.name === name);
+  const filing = (kind: Filing["kind"], path: string, name: string, on: Filed[]): Filing => ({
+    kind,
+    path,
+    name,
+    lines: on.map((note) => `- ${wikilink(note.path, note.title)} (${sessionLink})`),
+    key: sessionLink,
+    areas: on.map((note) => note.area),
+    page: pageFor(kind, name),
+  });
+  const place = (page: Filing) => {
+    const current = readFile(sql, page.path);
+    const emptied = current && !page.lines.length && !sectionLines(editSection(current.body, FILED, replaceSessionLines(page.key, [])), FILED).length;
+    if (emptied && onlyWrittenBy(sql, page.path, actor)) deleteFile(sql, page.path, now, actor);
+    else fileOnPage(sql, page, now, actor);
+  };
+  const holding = sql.exec<FileRow>("SELECT path, kind, frontmatter, body FROM files WHERE kind IN ('topic', 'person') AND instr(body, ?) > 0", sessionLink).toArray();
+  const named = (kind: Filing["kind"], key: "topic" | "name") => holding.flatMap((row) => (row.kind === kind ? [[row.path, String((JSON.parse(row.frontmatter) as Frontmatter)[key] ?? noteTitle(row.path, row.body))] as const] : []));
+  const topics = new Map([...named("topic", "topic"), ...filed.flatMap((note) => note.topics).map((topic) => [topicPath(topic), topic] as const)]);
+  for (const [path, topic] of topics) {
+    place(filing("topic", path, topic, filed.filter((note) => note.topics.some((t) => topicPath(t) === path))));
+  }
+  for (const [path, name] of new Map([...named("person", "name"), ...peoplePages(filed)])) {
+    place(filing("person", path, name, filed.filter((note) => note.people.some((person) => personPath(person) === path))));
   }
 
   if (!draft) {
@@ -178,8 +244,9 @@ function sessionItems(sql: SqlStorage, sessionId: string): Filed[] {
     .exec<FileRow>(`SELECT path, kind, frontmatter, body FROM files WHERE kind IN (${kinds}) AND json_extract(frontmatter, '$.session_id') = ? ORDER BY path`, sessionId)
     .toArray()
     .map((row) => {
-      const topics = (JSON.parse(row.frontmatter) as Frontmatter).topics;
-      return { path: row.path, kind: row.kind, title: noteTitle(row.path, row.body), topics: Array.isArray(topics) ? topics.filter((t): t is string => typeof t === "string") : [] };
+      const frontmatter = JSON.parse(row.frontmatter) as Frontmatter;
+      const strings = (value: JsonValue | undefined) => (Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : []);
+      return { path: row.path, kind: row.kind, title: noteTitle(row.path, row.body), topics: strings(frontmatter.topics), people: strings(frontmatter.people), area: typeof frontmatter.area === "string" ? frontmatter.area : "" };
     });
 }
 
@@ -229,9 +296,16 @@ function sessionEntries(sessionLink: string, entries: string[]) {
   };
 }
 
-/** The line in a task or event's body that says when, where and who, so recall finds them. */
-export function fieldsLine(fields: { due?: JsonValue; start?: JsonValue; location?: JsonValue; people?: JsonValue }): string {
-  const people = Array.isArray(fields.people) ? fields.people : [];
+/** One page per person, under the first name they were given, so "the kids" and "Kids" don't make two. */
+function peoplePages(items: { people: string[] }[]): Map<string, string> {
+  const pages = new Map<string, string>();
+  for (const name of items.flatMap((item) => item.people)) if (!pages.has(personPath(name))) pages.set(personPath(name), name);
+  return pages;
+}
+
+/** The line in an item's body that says when, where and who, so recall finds them. `link` points each person at their page. */
+export function fieldsLine(fields: { due?: JsonValue; start?: JsonValue; location?: JsonValue; people?: JsonValue }, link = false): string {
+  const people = (Array.isArray(fields.people) ? fields.people : []).map((person) => (link ? wikilink(personPath(String(person)), String(person)) : String(person)));
   return [fields.due ? `Due ${fields.due}.` : "", fields.start ? `When: ${fields.start}.` : "", fields.location ? `Where: ${fields.location}.` : "", people.length ? `Who: ${people.join(", ")}.` : ""].filter(Boolean).join(" ");
 }
 
@@ -266,8 +340,13 @@ export function writeAddedItem(sql: SqlStorage, item: DumpItem, now: string, act
   const base = `${ITEM_FOLDERS[item.kind]}/${date}-${slugify(item.title)}`;
   let path = `${base}.md`;
   for (let n = 2; readFile(sql, path); n++) path = `${base}-${n}.md`;
-  const body = [`# ${item.title}`, item.detail, fieldsLine(item)].filter(Boolean).join("\n\n").concat("\n");
+  const body = [`# ${item.title}`, item.detail, fieldsLine(item, true)].filter(Boolean).join("\n\n").concat("\n");
   writeFile(sql, path, item.kind, itemFrontmatter(item, { date, added_by: actor }), body, now, actor);
+  const link = wikilink(path, item.title);
+  for (const [page, name] of peoplePages([item])) {
+    fileOnPage(sql, { kind: "person", path: page, name, lines: [`- ${link}`], key: `[[${path.replace(/\.md$/, "")}|`, areas: [item.area] }, now, actor);
+  }
+  if (item.people.length) rebuildLinks(sql);
   return path;
 }
 
@@ -290,7 +369,7 @@ function writeItem(sql: SqlStorage, session: ReflectedSession, item: DumpItem, n
   const body = [
     `# ${item.title}`,
     item.detail,
-    fieldsLine(item),
+    fieldsLine(item, true),
     item.answer ? `## Answer\n\n${item.answer}` : "",
     [topics.length ? `Filed under ${topics.join(", ")}.` : "", `From ${wikilink(sessionNotePath(session))}.`].filter(Boolean).join(" "),
   ]
