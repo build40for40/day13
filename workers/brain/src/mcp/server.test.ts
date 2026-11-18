@@ -1,7 +1,7 @@
 import { runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { IDLE_MINUTES, type UserBrain } from "../brain";
-import { api, brainFor, callMcp, fakeReflection, fakeUser, mockClaude, mockWorkos, signInToMcp, type WorkosMock } from "../testing";
+import type { UserBrain } from "../brain";
+import { api, brainFor, callMcp, fakeReflection, fakeUser, goneQuiet, mockClaude, mockWorkos, signInToMcp, type WorkosMock } from "../testing";
 import { OPEN_BRAIN_GUIDE } from "@day13/instructions";
 import { CAPTURED } from "./server";
 
@@ -39,18 +39,20 @@ describe("the MCP tools", () => {
     expect(toolText(await callTool(token, "capture", { text: "Build a fake shed cinema" }))).toBe(CAPTURED);
     await callTool(token, "capture", { text: "How long does it take to dry?", context: "fake shed paint", answer: "About two fake hours." });
 
-    const turns = await runInDurableObject(brainFor(sub), (_: UserBrain, state) => state.storage.sql.exec<{ turns: string }>("SELECT turns FROM sessions WHERE ended_at IS NULL").toArray());
-    expect(turns.map((row) => JSON.parse(row.turns).map((t: { text: string }) => t.text))).toEqual([["Build a fake shed cinema", "How long does it take to dry?\n(Context: fake shed paint)\n(The AI they asked answered: About two fake hours.)"]]);
+    const entries = await runInDurableObject(brainFor(sub), (_: UserBrain, state) => state.storage.sql.exec<{ source: string; text: string }>("SELECT source, text FROM entries ORDER BY id").toArray());
+    expect(entries).toEqual([
+      { source: "app:Fake MCP client", text: "Build a fake shed cinema" },
+      { source: "app:Fake MCP client", text: "How long does it take to dry?\n(Context: fake shed paint)\n(The AI they asked answered: About two fake hours.)" },
+    ]);
 
     expect(toolText(await callTool(token, "open_brain"))).toContain("- Build a fake shed cinema");
     expect(toolText(await callTool(token, "recall", { query: "paint dry" }))).toContain("About two fake hours.");
     expect(toolText(await callTool(await signInToMcp(fakeUser(), workos), "recall", { query: "shed cinema" }))).toBe("Nothing in your notes matches that.");
 
-    const quiet = new Date(Date.now() - (IDLE_MINUTES + 1) * 60_000).toISOString();
-    await runInDurableObject(brainFor(sub), (_: UserBrain, state) => state.storage.sql.exec("UPDATE sessions SET last_message_at = ?", quiet));
+    await goneQuiet(sub);
     const reflection = mockClaude({ content: [{ type: "text", text: JSON.stringify(fakeReflection) }] });
     await runDurableObjectAlarm(brainFor(sub));
-    expect(reflection.requests[0].messages[0].content).toContain("User: Build a fake shed cinema");
+    expect(reflection.requests[0].messages[0].content).toContain("Fake MCP client] User: Build a fake shed cinema");
     expect(toolText(await callTool(token, "recall", { query: "shed cinema" }))).toContain("Turn the fake shed into a tiny cinema.");
     expect(toolText(await callTool(token, "open_brain"))).toContain("Nothing waiting.");
   });
@@ -68,7 +70,7 @@ describe("the MCP tools", () => {
     await callTool(token, "open_brain");
     const rpc = await callTool(token, "capture", { text: "   " });
     expect(rpc.result?.isError ?? rpc.error).toBeTruthy();
-    const sessions = await runInDurableObject(brainFor(sub), (_: UserBrain, state) => state.storage.sql.exec("SELECT id FROM sessions").toArray());
-    expect(sessions).toEqual([]);
+    const entries = await runInDurableObject(brainFor(sub), (_: UserBrain, state) => state.storage.sql.exec("SELECT id FROM entries").toArray());
+    expect(entries).toEqual([]);
   });
 });

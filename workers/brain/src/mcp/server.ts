@@ -7,7 +7,7 @@ import type { Rpc } from "../types";
 import { CAPTURE_TOOL, OPEN_BRAIN_TOOL, RECALL_TOOL, SERVER_INSTRUCTIONS, openBrainText } from "@day13/instructions";
 
 const SERVER_NAME = "dumpling";
-export const CAPTURED = "Saved. It'll be filed under topics once things go quiet.";
+export const CAPTURED = "Saved. It'll be filed under topics in a minute or so.";
 
 export const MAX_CAPTURE_CHARS = 8_000;
 const MAX_CONTEXT_CHARS = 500;
@@ -20,6 +20,8 @@ type Brain = Rpc<Pick<UserBrain, "getBrief" | "capture" | "recall">>;
 /** What the OAuth token was issued with, from `completeAuthorization()` at sign-in. */
 export interface McpProps extends Record<string, unknown> {
   sub: string;
+  /** The name the connected app gave itself at sign-in. Tokens from before this was kept don't have one. */
+  client?: string;
 }
 
 function signedInBrain(): Brain {
@@ -54,7 +56,8 @@ export function createBrainServer(): McpServer {
       annotations: CAPTURE_TOOL.annotations,
     },
     async (captured) => {
-      await signedInBrain().capture(renderCapture(captured));
+      const client = getMcpAuthContext()?.props.client;
+      await signedInBrain().capture(renderCapture(captured), typeof client === "string" ? client : undefined);
       return text(CAPTURED);
     },
   );
@@ -81,10 +84,10 @@ export function renderCapture({ text: said, context, answer }: { text: string; c
   return [said, context && `(Context: ${context})`, answer && `(The AI they asked answered: ${answer})`].filter(Boolean).join("\n");
 }
 
-/** What they've captured that isn't filed yet, then what a voice session would start from. */
+/** What they've said that isn't filed yet, then what a voice session would start from. */
 export function renderBrief({ user, memory, sessionNotes, topics, recent, unfiled, time, today }: Brief): string {
   return [
-    section("Captured lately, not filed yet", unfiled.length ? unfiled.map((turn) => `- ${turn.text.replaceAll("\n", " ")}`).join("\n") : "Nothing waiting."),
+    section("Said lately, not filed yet", unfiled.length ? unfiled.map((turn) => `- ${turn.text.replaceAll("\n", " ")}`).join("\n") : "Nothing waiting."),
     section("About them (USER.md)", [`Preferences: ${JSON.stringify(user.preferences)}`, user.about.trim()].filter(Boolean).join("\n\n")),
     section("How to help them (MEMORY.md)", memory?.trim() || "Nothing yet."),
     section("Their last conversations, newest first", sessionNotes.length ? sessionNotes.map(({ path, body }) => `## ${path}\n${cut(body.trim(), MAX_SESSION_NOTE_CHARS)}`).join("\n\n") : "None yet."),
