@@ -86,7 +86,7 @@ syncSignIn()
 
 const messages: Record<string, string> = {
   voice_not_configured: 'Dumpling voice still needs server setup.',
-  voice_account_not_allowed: 'This WorkOS account does not have access to this voice demo.',
+  voice_account_not_allowed: 'You’re signed in, but voice is only switched on for one account for now.',
   NotAllowedError: 'Allow microphone access for this site, then tap the mic again.',
 }
 
