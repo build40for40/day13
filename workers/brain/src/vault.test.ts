@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { UserBrain } from "./brain";
 import type { Reflection } from "./reflection";
 import { noTaskFields } from "./testing";
-import { addLines, editSection, noteTitle, slugify, topicPath, londonDate, londonDay, MAX_VERSIONS_PER_NOTE, nextLondonMidnight, readLearned, rebuildLinks, replaceAbout, replaceSessionLines, restoreVersion, sessionNotePath, splitLearned, versionsOf, writeConsolidation, writeFile, writeReflection, type ReflectedSession } from "./vault";
+import { addLines, editSection, noteTitle, slugify, topicPath, londonDate, londonDay, MAX_VERSIONS_PER_NOTE, nextLondonMidnight, readLearned, rebuildLinks, replaceAbout, replaceSessionLines, restoreVersion, sessionNotePath, splitLearned, versionsOf, writeConsolidation, writeFile, writeReflection, type ReflectedSession, withFieldsLine } from "./vault";
 
 const reflection: Reflection = { items: [], summary: "Asked about fake things.", facts: ["Prefers short answers"], lessons: [] };
 
@@ -249,5 +249,15 @@ describe("writeConsolidation", () => {
       expect(versionsOf(sql, "USER.md")[0]).toMatchObject({ actor: "consolidation" });
       expect(links(sql)).toEqual([]);
     });
+  });
+});
+
+describe("the fields line of a task or event", () => {
+  it("is swapped in place, added after the detail and dropped when there's nothing to say", () => {
+    const filed = "# Fake task\n\nA fake detail.\n\nDue 2026-11-19. Where: school.\n\nFiled under [[topics/home|home]]. From [[sessions/2026-11-18-aaaaaaaa]].\n";
+    expect(withFieldsLine(filed, "Due 2026-11-25.")).toBe(filed.replace("Due 2026-11-19. Where: school.", "Due 2026-11-25."));
+    expect(withFieldsLine(filed, "")).toBe(filed.replace("Due 2026-11-19. Where: school.\n\n", ""));
+    expect(withFieldsLine("# Fake task\n\nA fake detail.\n\nFrom [[sessions/2026-11-18-aaaaaaaa]].\n", "Due 2026-11-25.")).toBe("# Fake task\n\nA fake detail.\n\nDue 2026-11-25.\n\nFrom [[sessions/2026-11-18-aaaaaaaa]].\n");
+    expect(withFieldsLine("# Fake task\n", "Due 2026-11-25.")).toBe("# Fake task\n\nDue 2026-11-25.\n");
   });
 });

@@ -32,7 +32,7 @@ describe("runConversation", () => {
     for (const request of client.requests) {
       expect(request.model).toBe("claude-opus-5-5");
       expect(request.output_config).toEqual({ effort: "medium" });
-      expect(request.tools!.map((t) => ("name" in t ? t.name : t.type))).toEqual(["open_brain", "capture", "recall", "Skill"]);
+      expect(request.tools!.map((t) => ("name" in t ? t.name : t.type))).toEqual(["open_brain", "capture", "recall", "read_note", "add_task", "list_tasks", "update_task", "add_event", "list_events", "update_event", "Skill"]);
     }
   });
 
