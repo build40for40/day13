@@ -55,7 +55,7 @@ Sessions also end on their own: after 30 quiet minutes, after 40 turns (the last
 
 ## MCP
 
-A stateless MCP server at `MCP_RESOURCE` (`https://day13-mcp.build40for40.com/mcp`), built with `createMcpHandler` from `agents`. Claude shares one MCP session across a person's chats and sends no conversation id, so every request gets a fresh server and nothing is kept between calls.
+A stateless MCP server at `MCP_RESOURCE` (`https://dumpling.build40for40.com/mcp`), built with `createMcpHandler` from `agents`. Claude shares one MCP session across a person's chats and sends no conversation id, so every request gets a fresh server and nothing is kept between calls.
 
 | Tool | What it does |
 | --- | --- |
