@@ -86,7 +86,6 @@ syncSignIn()
 
 const messages: Record<string, string> = {
   voice_not_configured: 'Dumpling voice still needs server setup.',
-  voice_account_not_allowed: 'You’re signed in, but voice is only switched on for one account for now.',
   NotAllowedError: 'Allow microphone access for this site, then tap the mic again.',
 }
 
@@ -124,12 +123,17 @@ async function toggleVoice() {
     active = await Conversation.startSession({
       signedUrl: data.signed_url,
       connectionType: 'websocket',
+      dynamicVariables: { dumpling_call: data.call_token },
       onMessage({ source, message }) {
         if (source === 'user') window.dispatchEvent(new CustomEvent('dumpling:transcript', { detail: message }))
         else refreshBrainList()
       },
       onDisconnect() {
-        refreshBrainList()
+        void fetch('/day13/api/sessions/' + encodeURIComponent(data.session_id) + '/end', {
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + accessToken },
+          keepalive: true,
+        }).then(refreshBrainList, () => {})
         active = undefined
         setCallState(false)
         show('Call ended.')

@@ -18,15 +18,13 @@ async function workos(path, data) {
   })
 }
 
-async function verifyOwner(env, authorization) {
-  if (!authorization?.match(/^Bearer \S+$/)) return json({ error: 'sign_in_required' }, 401)
-  const profile = await env.BRAIN.fetch('https://build40for40.com/day13/api/me', { headers: { authorization } })
-  if (profile.status === 401) return json({ error: 'sign_in_required' }, 401)
-  if (!profile.ok) return json({ error: 'brain_unavailable' }, 502)
-  const { id } = await profile.json()
-  if (!env.DUMPLING_VOICE_OWNER_ID || id !== env.DUMPLING_VOICE_OWNER_ID) {
-    return json({ error: 'voice_account_not_allowed' }, 403)
-  }
+async function startCall(env, authorization) {
+  if (!authorization?.match(/^Bearer \S+$/)) return { denied: json({ error: 'sign_in_required' }, 401) }
+  const call = await env.BRAIN.fetch('https://build40for40.com/day13/api/voice/calls', { method: 'POST', headers: { authorization } })
+  if (call.status === 401) return { denied: json({ error: 'sign_in_required' }, 401) }
+  if (!call.ok) return { denied: json({ error: 'brain_unavailable' }, 502) }
+  const { id, call_token } = await call.json()
+  return { session_id: id, call_token }
 }
 
 export default {
@@ -65,8 +63,8 @@ export default {
       }
 
       if (path !== BASE + '/voice/session') return json({ error: 'not_found' }, 404)
-      if (!env.DUMPLING_VOICE_OWNER_ID || !env.ELEVENLABS_API_KEY) return json({ error: 'voice_not_configured' }, 503)
-      const denied = await verifyOwner(env, request.headers.get('Authorization'))
+      if (!env.ELEVENLABS_API_KEY) return json({ error: 'voice_not_configured' }, 503)
+      const { denied, ...call } = await startCall(env, request.headers.get('Authorization'))
       if (denied) return denied
 
       const endpoint = new URL('https://api.elevenlabs.io/v1/convai/conversation/get-signed-url')
@@ -82,7 +80,7 @@ export default {
       if (location.protocol !== 'wss:' || location.hostname !== 'api.elevenlabs.io') {
         return json({ error: 'voice_unavailable' }, 502)
       }
-      return json({ signed_url })
+      return json({ signed_url, ...call })
     } catch (cause) {
       const signInPath = path === BASE + '/sign-in/token'
       console.warn('Dumpling voice upstream failure', { phase: signInPath ? 'workos' : 'voice', name: cause?.name })
