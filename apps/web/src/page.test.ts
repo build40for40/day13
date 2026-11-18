@@ -33,12 +33,12 @@ beforeEach(() => {
   vi.spyOn(window, 'addEventListener').mockImplementation((...args) => { listeners.push(args); original(...args) })
   new Function('completionMatches', 'separateDumplings', script)(completionMatches, separateDumplings)
   window.DumplingBrain = { connected: true, setStatus: vi.fn().mockResolvedValue(undefined), setDue: vi.fn().mockResolvedValue(undefined), dump: vi.fn().mockResolvedValue(undefined), reload: vi.fn() }
-  window.dumpling!.setItems(tasks.map(i => ({ ...i })), day)
+  window.dumplingView!.setItems(tasks.map(i => ({ ...i })), day)
 })
 afterEach(() => {
   for (const args of listeners.splice(0)) window.removeEventListener(...args)
   delete window.DumplingBrain
-  delete window.dumpling
+  delete window.dumplingView
   vi.clearAllTimers(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals()
 })
 
@@ -98,7 +98,7 @@ describe('Cordelia interface with the current brain integration', () => {
     expect(document.querySelector<HTMLButtonElement>('#task-move-save')!.disabled).toBe(false)
   })
   it('clears real tasks when the shared session resets and keeps categories', () => {
-    window.dumpling!.resetItems()
+    window.dumplingView!.resetItems()
     expect(document.querySelector<HTMLElement>('#example-label')!.hidden).toBe(false)
     expect(document.querySelector('[aria-label="Move Send safety summary"]')).toBeNull()
     expect(document.querySelector('[data-category="Home"]')).not.toBeNull()

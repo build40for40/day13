@@ -2,6 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import type Anthropic from "@anthropic-ai/sdk";
 import { createClient, liveModel } from "./claude";
 import { consolidate, needsConsolidation } from "./consolidation";
+import { itemActionRunner } from "./item-actions";
 import { error } from "./http";
 import { USER_MD, type JsonValue, type Preferences, type Profile, type ProfilePatch, type PublicProfile } from "./profile";
 import { assembleContext, MAX_RECENT_ITEMS, MAX_SESSION_NOTES, MAX_TOPICS, OPENING_LINE, type ContextSources, type Note } from "./prompt";
@@ -12,7 +13,7 @@ import { draft, isRetryable, reflect, tidyItems, type Area, type Importance, typ
 import { migrate } from "./schema";
 import { starterAbout, starterPreferences } from "./seed";
 import { appendUserText, runTurn } from "./turn";
-import type { StreamEvent, Turn } from "./types";
+import type { StreamEvent, ToolCall, Turn } from "./types";
 import { filedBy, londonDate, londonDay, londonTime, MEMORY_MD, nextLondonMidnight, fieldsLine, noteTitle, readFile, readLearned, replaceAbout, restoreVersion, splitLearned, versionsOf, withFieldsLine, writeAddedItem, writeConsolidation, writeFile, writeReflection, type NoteKind, type NoteVersion } from "./vault";
 
 /** A voice session ends when the person has been quiet this long, in case the client never says it's done. */
@@ -230,6 +231,10 @@ export class UserBrain extends DurableObject<Env> {
     const emit = (event: StreamEvent) => void writer.write(encoder.encode(sse(event))).catch(() => {});
 
     const work = (async () => {
+      const changes: ToolCall[] = [];
+      const at = now.toISOString();
+      const userTurn = { role: "user", at, text } satisfies Turn;
+      let saved = false;
       try {
         const outcome = await runTurn({
           client: createClient(this.env.ANTHROPIC_API_KEY),
@@ -238,10 +243,16 @@ export class UserBrain extends DurableObject<Env> {
           messages: appendUserText(JSON.parse(row.messages), text),
           recall: (query) => this.recall(query, voiceSource(sessionId)),
           emit,
+          itemAction: itemActionRunner({
+            getNote: (path) => this.getNote(path),
+            listItems: (kind) => this.listItems(kind),
+            addItem: (item) => this.addItem(item, "voice"),
+            updateNote: (path, patch, kind) => this.updateNote(path, patch, kind),
+          }),
+          onItemChange: (call) => changes.push(call),
         });
-        const at = now.toISOString();
         const userTurns = row.user_turns + 1;
-        const said: Turn[] = [{ role: "user", at, text }, ...outcome.turns];
+        const said: Turn[] = [userTurn, ...outcome.turns];
         this.ctx.storage.transactionSync(() => {
           this.sql.exec(
             "UPDATE sessions SET messages = ?, turns = ?, facts = ?, user_turns = ?, last_message_at = ? WHERE id = ?",
@@ -254,15 +265,29 @@ export class UserBrain extends DurableObject<Env> {
           );
           appendEntries(this.sql, voiceSource(sessionId), said, new Date());
         });
+        saved = true;
         const ended = userTurns >= TURN_CAP;
         if (ended) this.endSession(sessionId, "turn_cap", new Date());
         await this.setNextAlarm();
         emit({ type: "done", session_ended: ended });
         console.log(JSON.stringify({ event: "brain_turn", session_id: sessionId, model: row.model, user_turns: userTurns, ...outcome.timings, usage: outcome.usage }));
       } catch (e) {
-        // Nothing was saved, so the client can send the same words again. The error can't hold the prompt: the SDK only reports the API's own message.
+        // A write can succeed before the model finishes its reply. Keep the transcript and its
+        // completed writes for filing, even when the model's follow-up fails.
+        if (changes.length && !saved) {
+          const said: Turn[] = [userTurn, { role: "assistant", at, tool_calls: changes }];
+          this.ctx.storage.transactionSync(() => {
+            this.sql.exec(
+              "UPDATE sessions SET messages = ?, turns = ?, user_turns = ?, last_message_at = ? WHERE id = ?",
+              JSON.stringify(appendUserText(JSON.parse(row.messages), "A previous voice request changed the list, but its reply failed. Check the current list before repeating a change.")),
+              JSON.stringify([...JSON.parse(row.turns), ...said]),
+              row.user_turns + 1, at, sessionId,
+            );
+            appendEntries(this.sql, voiceSource(sessionId), said, new Date());
+          });
+        }
         console.error(JSON.stringify({ event: "brain_turn_failed", session_id: sessionId, model: row.model, error: String(e) }));
-        emit({ type: "error", message: TURN_FAILED });
+        emit({ type: "error", message: changes.length ? "The list changed, but I couldn’t finish the reply. Check the list before trying again." : TURN_FAILED });
       } finally {
         this.busySessions.delete(sessionId);
         await writer.close().catch(() => {});
@@ -318,7 +343,7 @@ export class UserBrain extends DurableObject<Env> {
   }
 
   /** Files a to-do or event straight away, for when the person asked for exactly that. An area nobody gave is filed as personal and marked inferred. */
-  addItem(item: NewItem): NoteView | "invalid_item" {
+  addItem(item: NewItem, actor = "mcp"): NoteView | "invalid_item" {
     this.init();
     const [tidy] = tidyItems([
       {
@@ -337,7 +362,7 @@ export class UserBrain extends DurableObject<Env> {
       },
     ]);
     if (!tidy || (tidy.kind === "event" && !tidy.start)) return "invalid_item";
-    const path = this.ctx.storage.transactionSync(() => writeAddedItem(this.sql, tidy, new Date().toISOString(), "mcp"));
+    const path = this.ctx.storage.transactionSync(() => writeAddedItem(this.sql, tidy, new Date().toISOString(), actor));
     return this.getNote(path)!;
   }
 

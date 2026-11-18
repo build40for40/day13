@@ -299,11 +299,16 @@ $('task-move-form').addEventListener('submit', async (event) => {
     $('task-move-cancel').disabled = false
   }
 })
-function row(i) { const c = h('div', 'card' + (fresh.has(i.id) ? ' fresh' : '')); c.dataset.id = i.id; c.style.setProperty('--c', reef(i.reef).color); const t = h('div', 'txt', h('div', 'short', i.short)); if (i.why) t.append(h('div', 'why', i.why)); t.append(categoryTag(i)); c.append(t, ...[moveButton(i), tick(i)].filter(Boolean)); return c }
+function dueLabel(i) {
+  if (!i.path || !i.dueDate) return null
+  const date = new Date(i.dueDate + 'T12:00:00')
+  return h('div', 'why', date.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }))
+}
+function row(i) { const c = h('div', 'card' + (fresh.has(i.id) ? ' fresh' : '')); c.dataset.id = i.id; c.style.setProperty('--c', reef(i.reef).color); const t = h('div', 'txt', h('div', 'short', i.short), dueLabel(i)); if (i.why) t.append(h('div', 'why', i.why)); t.append(categoryTag(i)); c.append(t, ...[moveButton(i), tick(i)].filter(Boolean)); return c }
 function groupCard(e) {
   const same = e.items.every((x) => x.reef === e.items[0].reef), c = h('div', 'card group'); c.style.setProperty('--c', same ? reef(e.items[0].reef).color : '#d9f3ee')
   c.append(h('div', 'gh', e.theme))
-  for (const i of e.items) { const r = h('div', 'sub-row'); r.dataset.id = i.id; r.style.setProperty('--c', reef(i.reef).color); if (i.who) r.append(h('span', 'who', i.who)); r.append(h('div', 'txt', h('div', 'short', i.short), categoryTag(i)), ...[moveButton(i), tick(i)].filter(Boolean)); c.append(r) }
+  for (const i of e.items) { const r = h('div', 'sub-row'); r.dataset.id = i.id; r.style.setProperty('--c', reef(i.reef).color); if (i.who) r.append(h('span', 'who', i.who)); r.append(h('div', 'txt', h('div', 'short', i.short), categoryTag(i), dueLabel(i)), ...[moveButton(i), tick(i)].filter(Boolean)); c.append(r) }
   return c
 }
 function fill(el, list, emptyText) { el.replaceChildren(); const es = entries(list); es.forEach((e) => el.append(e.items.length > 1 ? groupCard(e) : row(e.items[0]))); if (!es.length) el.append(h('p', 'empty', emptyText)) }
@@ -506,7 +511,7 @@ $('mic').addEventListener('dumpling:voice-state', syncMic)
 syncMic()
 render()
 // Hooks for the signed-in Brain list.
-window.dumpling = {
+window.dumplingView = {
   toast,
   resetItems() {
     if (!$('example-label').hidden) return

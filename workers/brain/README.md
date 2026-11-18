@@ -10,7 +10,7 @@ voice client ─ WorkOS access token ─▶ Worker: auth first, routes
                                          ▼
                                       UserBrain
                                          ├─ POST /sessions ─▶ context assembled once from the vault, stored with the model
-                                         ├─ POST turns ─────▶ Claude streams back as SSE; note and recall run here ─┐
+                                         ├─ POST turns ─────▶ Claude streams back as SSE; memory and task/event tools run here ─┐
                                          └─ POST end ───────▶ has the log filed now                                 │
                                                                                                                     ▼
 MCP client ─ OAuth token from this Worker ─▶ OAuthProvider: token checked, props.sub                             the log
@@ -76,7 +76,7 @@ Every route needs `Authorization: Bearer <WorkOS access token>`, and answers `40
 | Route | What it does |
 | --- | --- |
 | `POST /sessions` | Starts a voice session, ending any still open. `201 { id, started_at, opening_line }` |
-| `POST /sessions/:id/turns` | `{ "text": "what they said" }`. Streams `text` events with a `delta`, then `done` with `session_ended`, or `error`. Nothing is saved from a turn that errors, so the client can resend it |
+| `POST /sessions/:id/turns` | `{ "text": "what they said" }`. Streams `text` events with a `delta`, then `done` with `session_ended`, or `error`. If the reply fails after a task or event write, that completed change is kept. Check the current list before retrying |
 | `POST /sessions/:id/end` | `202` with the session, and what was said in it is filed a moment later. `204` when nothing was said, since there's nothing to keep |
 | `GET /sessions/:id` | The transcript, noted facts and `reflection_status`: `not_ended`, `pending`, `done` once a pass has filed everything said in it, or `failed` |
 | `GET /notes?kind=` | Every note, newest first, each with its filing `fields`. `kind` is one of `user`, `memory`, `session`, `idea`, `question`, `task`, `event`, `thought`, `topic` |
