@@ -156,50 +156,102 @@ export const replaceSessionLines = (key: string, lines: string[]) => (current: s
 /** Adds the lines that aren't there yet. */
 export const addLines = (lines: string[]) => (current: string[]) => [...new Set([...current, ...lines])];
 
+interface Filed {
+  path: string;
+  kind: string;
+  title: string;
+  topics: string[];
+  people: string[];
+  area: string;
+}
+
 /**
  * Writes everything one reflection learned into the vault, then rebuilds the links. Running it again with the same input changes nothing:
- * every line a session adds carries that session's [[wikilink]], and a rerun replaces that session's lines.
+ * every line a session adds carries that session's [[wikilink]], and a rerun replaces that session's lines. A rerun with different
+ * items also removes the notes and topic lines the earlier run left that are no longer wanted, except notes the person has changed
+ * since, which are left exactly as they are. A draft leaves USER.md and MEMORY.md alone.
  */
-export function writeReflection(sql: SqlStorage, session: ReflectedSession, now: string): string {
+export function writeReflection(sql: SqlStorage, session: ReflectedSession, now: string, { draft = false }: { draft?: boolean } = {}): string {
   const { reflection } = session;
   const actor = `session:${session.id}`;
   const sessionPath = sessionNotePath(session);
   const sessionLink = wikilink(sessionPath);
 
-  const claimed = new Set<string>();
-  const filed = reflection.items.map((item) => ({ item, path: writeItem(sql, session, item, now, claimed) }));
+  const before = sessionItems(sql, session.id);
+  const kept = before.filter((note) => !onlyWrittenBy(sql, note.path, actor));
+  const claimed = new Set(kept.map((note) => note.path));
+  const written: Filed[] = reflection.items.flatMap((item) => {
+    const path = writeItem(sql, session, item, now, claimed);
+    return path ? [{ path, kind: item.kind, title: item.title, topics: item.topics, people: item.people, area: item.area }] : [];
+  });
+  const filed = [...written, ...kept];
+  const wanted = new Set(filed.map((note) => note.path));
+  for (const note of before) if (!wanted.has(note.path)) deleteFile(sql, note.path, now, actor);
+
   writeFile(sql, sessionPath, "session", { session_id: session.id, date: londonDate(session.started_at) }, sessionBody(session, filed), now, actor);
 
   const pageFor = (kind: PageNote["kind"], name: string) => reflection.pages?.find((page) => page.kind === kind && page.name === name);
-  const filing = (kind: Filing["kind"], path: string, name: string, on: typeof filed): Filing => ({
+  const filing = (kind: Filing["kind"], path: string, name: string, on: Filed[]): Filing => ({
     kind,
     path,
     name,
-    lines: on.map(({ item, path: itemPath }) => `- ${wikilink(itemPath, item.title)} (${sessionLink})`),
+    lines: on.map((note) => `- ${wikilink(note.path, note.title)} (${sessionLink})`),
     key: sessionLink,
-    areas: on.map(({ item }) => item.area),
+    areas: on.map((note) => note.area),
     page: pageFor(kind, name),
   });
-  for (const topic of [...new Set(reflection.items.flatMap((item) => item.topics))]) {
-    fileOnPage(sql, filing("topic", topicPath(topic), topic, filed.filter(({ item }) => item.topics.includes(topic))), now, actor);
+  const place = (page: Filing) => {
+    const current = readFile(sql, page.path);
+    const emptied = current && !page.lines.length && !sectionLines(editSection(current.body, FILED, replaceSessionLines(page.key, [])), FILED).length;
+    if (emptied && onlyWrittenBy(sql, page.path, actor)) deleteFile(sql, page.path, now, actor);
+    else fileOnPage(sql, page, now, actor);
+  };
+  const holding = sql.exec<FileRow>("SELECT path, kind, frontmatter, body FROM files WHERE kind IN ('topic', 'person') AND instr(body, ?) > 0", sessionLink).toArray();
+  const named = (kind: Filing["kind"], key: "topic" | "name") => holding.flatMap((row) => (row.kind === kind ? [[row.path, String((JSON.parse(row.frontmatter) as Frontmatter)[key] ?? noteTitle(row.path, row.body))] as const] : []));
+  const topics = new Map([...named("topic", "topic"), ...filed.flatMap((note) => note.topics).map((topic) => [topicPath(topic), topic] as const)]);
+  for (const [path, topic] of topics) {
+    place(filing("topic", path, topic, filed.filter((note) => note.topics.some((t) => topicPath(t) === path))));
   }
-  for (const [path, name] of peoplePages(reflection.items)) {
-    fileOnPage(sql, filing("person", path, name, filed.filter(({ item }) => item.people.some((person) => personPath(person) === path))), now, actor);
+  for (const [path, name] of new Map([...named("person", "name"), ...peoplePages(filed)])) {
+    place(filing("person", path, name, filed.filter((note) => note.people.some((person) => personPath(person) === path))));
   }
 
-  const user = readFile(sql, USER_MD);
-  if (user) {
-    writeFile(sql, USER_MD, "user", user.frontmatter, editSection(user.body, LEARNED, sessionEntries(sessionLink, reflection.facts)), now, actor);
-  }
+  if (!draft) {
+    const user = readFile(sql, USER_MD);
+    if (user) {
+      writeFile(sql, USER_MD, "user", user.frontmatter, editSection(user.body, LEARNED, sessionEntries(sessionLink, reflection.facts)), now, actor);
+    }
 
-  const memory = readFile(sql, MEMORY_MD);
-  if (memory || reflection.lessons.length) {
-    const body = editSection(memory?.body ?? MEMORY_START, LESSONS, sessionEntries(sessionLink, reflection.lessons));
-    writeFile(sql, MEMORY_MD, "memory", memory?.frontmatter ?? {}, body, now, actor);
+    const memory = readFile(sql, MEMORY_MD);
+    if (memory || reflection.lessons.length) {
+      const body = editSection(memory?.body ?? MEMORY_START, LESSONS, sessionEntries(sessionLink, reflection.lessons));
+      writeFile(sql, MEMORY_MD, "memory", memory?.frontmatter ?? {}, body, now, actor);
+    }
   }
 
   rebuildLinks(sql);
   return sessionPath;
+}
+
+/** The item notes one session has filed, and for each whether the person has changed it since. */
+export function filedBy(sql: SqlStorage, sessionId: string): { kind: string; title: string; changed: boolean }[] {
+  return sessionItems(sql, sessionId).map(({ path, kind, title }) => ({ kind, title, changed: !onlyWrittenBy(sql, path, `session:${sessionId}`) }));
+}
+
+function sessionItems(sql: SqlStorage, sessionId: string): Filed[] {
+  const kinds = Object.keys(ITEM_FOLDERS).map((kind) => `'${kind}'`).join(", ");
+  return sql
+    .exec<FileRow>(`SELECT path, kind, frontmatter, body FROM files WHERE kind IN (${kinds}) AND json_extract(frontmatter, '$.session_id') = ? ORDER BY path`, sessionId)
+    .toArray()
+    .map((row) => {
+      const frontmatter = JSON.parse(row.frontmatter) as Frontmatter;
+      const strings = (value: JsonValue | undefined) => (Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : []);
+      return { path: row.path, kind: row.kind, title: noteTitle(row.path, row.body), topics: strings(frontmatter.topics), people: strings(frontmatter.people), area: typeof frontmatter.area === "string" ? frontmatter.area : "" };
+    });
+}
+
+function onlyWrittenBy(sql: SqlStorage, path: string, actor: string): boolean {
+  return sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM file_versions WHERE path = ? AND actor != ?", path, actor).one().n === 0;
 }
 
 /** What has been learned so far, for the consolidation to tidy. */
@@ -244,12 +296,8 @@ function sessionEntries(sessionLink: string, entries: string[]) {
   };
 }
 
-/**
- * Writes one dumped item as its own note and returns its path. The path comes from the London day and the title, with a
- * number added when another session already has that path, so a rerun of the same session lands on the same note.
- */
 /** One page per person, under the first name they were given, so "the kids" and "Kids" don't make two. */
-function peoplePages(items: DumpItem[]): Map<string, string> {
+function peoplePages(items: { people: string[] }[]): Map<string, string> {
   const pages = new Map<string, string>();
   for (const name of items.flatMap((item) => item.people)) if (!pages.has(personPath(name))) pages.set(personPath(name), name);
   return pages;
@@ -302,13 +350,19 @@ export function writeAddedItem(sql: SqlStorage, item: DumpItem, now: string, act
   return path;
 }
 
-function writeItem(sql: SqlStorage, session: ReflectedSession, item: DumpItem, now: string, claimed: Set<string>): string {
+/**
+ * Writes one dumped item as its own note and returns its path. The path comes from the London day and the title, with a
+ * number added when another session already has that path, so a rerun of the same session lands on the same note.
+ * Returns null, writing nothing, when that note is one the person has changed since this session filed it.
+ */
+function writeItem(sql: SqlStorage, session: ReflectedSession, item: DumpItem, now: string, claimed: Set<string>): string | null {
   const base = `${ITEM_FOLDERS[item.kind]}/${londonDate(session.started_at)}-${slugify(item.title)}`;
   const takenByAnother = (path: string) => {
     const current = readFile(sql, path);
     return current !== null && current.frontmatter.session_id !== session.id;
   };
   let path = `${base}.md`;
+  if (claimed.has(path) && !onlyWrittenBy(sql, path, `session:${session.id}`)) return null;
   for (let n = 2; claimed.has(path) || takenByAnother(path); n++) path = `${base}-${n}.md`;
   claimed.add(path);
   const topics = item.topics.map((topic) => wikilink(topicPath(topic), topic));
@@ -326,12 +380,12 @@ function writeItem(sql: SqlStorage, session: ReflectedSession, item: DumpItem, n
   return path;
 }
 
-function sessionBody({ started_at, reflection }: ReflectedSession, filed: { item: DumpItem; path: string }[]): string {
+function sessionBody({ started_at, reflection }: ReflectedSession, filed: Filed[]): string {
   const list = (heading: string, items: string[]) => (items.length ? `## ${heading}\n\n${items.map((i) => `- ${i}`).join("\n")}` : "");
   return [
     `# Conversation, ${londonDay(started_at)}`,
     reflection.summary,
-    list(FILED, filed.map(({ item, path }) => `${wikilink(path, item.title)} (${item.kind})`)),
+    list(FILED, filed.map((note) => `${wikilink(note.path, note.title)} (${note.kind})`)),
     list("Learned about them", reflection.facts),
     list(LESSONS, reflection.lessons),
   ]
@@ -395,6 +449,14 @@ export function writeFile(sql: SqlStorage, path: string, kind: NoteKind, frontma
   );
   sql.exec("INSERT INTO file_versions (path, operation, kind, frontmatter, body, actor, at) VALUES (?, ?, ?, ?, ?, ?, ?)", path, current ? "modified" : "created", kind, meta, body, actor, now);
   sql.exec("DELETE FROM file_versions WHERE path = ? AND id NOT IN (SELECT id FROM file_versions WHERE path = ? ORDER BY id DESC LIMIT ?)", path, path, MAX_VERSIONS_PER_NOTE);
+}
+
+/** Removes a note, keeping its last content as a version so it can be put back. */
+export function deleteFile(sql: SqlStorage, path: string, now: string, actor: string): void {
+  const current = sql.exec<FileRow>("SELECT path, kind, frontmatter, body FROM files WHERE path = ?", path).toArray()[0];
+  if (!current) return;
+  sql.exec("DELETE FROM files WHERE path = ?", path);
+  sql.exec("INSERT INTO file_versions (path, operation, kind, frontmatter, body, actor, at) VALUES (?, 'deleted', ?, ?, ?, ?, ?)", path, current.kind, current.frontmatter, current.body, actor, now);
 }
 
 /** Every kept version of a note, newest first. */

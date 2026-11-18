@@ -2,20 +2,21 @@ import { env } from "cloudflare:workers";
 import Anthropic from "@anthropic-ai/sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createClient } from "./claude";
-import { isRetryable, reflect, ReflectionError, reflectionRequest, renderTranscript, tidyItems, type ReflectionInput, renderInput } from "./reflection";
-import { fakeReflection, mockClaude, noTaskFields } from "./testing";
-import type { Turn } from "./types";
+import { draft, draftRequest, isRetryable, reflect, ReflectionError, reflectionRequest, renderInput, renderLog, tidyItems, type LoggedLine, type ReflectionInput } from "./reflection";
+import { fakeDraft, fakeReflection, mockClaude, noTaskFields } from "./testing";
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const turns: Turn[] = [
-  { role: "user", at: "2026-11-10T18:00:00Z", text: "Keep it short please." },
-  { role: "assistant", at: "2026-11-10T18:00:02Z", text: "Will do.", tool_calls: [{ id: "toolu_1", name: "note", input: { fact: "Prefers short answers" } }] },
+const VOICE = "voice:aaaaaaaa-1111-4111-8111-111111111111";
+const entries: LoggedLine[] = [
+  { source: VOICE, role: "user", at: "2026-11-10T18:00:00Z", text: "Keep it short please.", tool_calls: [] },
+  { source: VOICE, role: "assistant", at: "2026-11-10T18:00:02Z", text: "Will do.", tool_calls: [{ id: "toolu_1", name: "note", input: { fact: "Prefers short answers" } }] },
+  { source: "app:Fake Chat", role: "user", at: "2026-11-10T18:01:00Z", text: "Book the fake dentist.", tool_calls: [] },
 ];
 
-const input: ReflectionInput = { user: { preferences: {}, about: "# About me" }, memory: "# Memory\n\n## Lessons\n\n- Jokes about fake trains go down well\n", topics: ["garden", "work"], turns, facts: ["Prefers short answers"] };
+const input: ReflectionInput = { user: { preferences: {}, about: "# About me" }, memory: "# Memory\n\n## Lessons\n\n- Jokes about fake trains go down well\n", topics: ["garden", "work"], entries };
 
 const reply = (output: unknown) => ({ content: [{ type: "text" as const, text: typeof output === "string" ? output : JSON.stringify(output) }] });
 
@@ -30,13 +31,43 @@ describe("reflectionRequest", () => {
     expect(content).toContain("- Jokes about fake trains go down well");
     expect(content).toContain("# Existing topics\n\n- garden\n- work");
     expect(content).toContain("User: Keep it short please.");
-    expect(content).toContain("- Prefers short answers");
+    expect(content).toContain("# Facts the assistant noted\n\n- Prefers short answers");
+    expect(content).not.toContain("# Already filed from this log");
+  });
+
+  it("shows what an earlier pass filed from the same log, and which of it the person has changed", () => {
+    const content = reflectionRequest({ ...input, filed: [{ kind: "task", title: "Book the fake dentist", changed: false }, { kind: "idea", title: "A fake shed cinema", changed: true }] }).messages[0].content as string;
+    expect(content).toContain("# Already filed from this log\n\n- Book the fake dentist (task)\n- A fake shed cinema (idea): they've since changed this one themselves, so leave it out");
   });
 });
 
-describe("renderTranscript", () => {
-  it("writes who said what, and the tools the assistant used", () => {
-    expect(renderTranscript(turns)).toBe(['User: Keep it short please.', "Assistant: Will do.", '(Assistant used note {"fact":"Prefers short answers"})'].join("\n"));
+describe("draftRequest", () => {
+  it("asks Sonnet for the items only", () => {
+    const request = draftRequest(input);
+    expect(request).toMatchObject({ model: "claude-sonnet-5-5", output_config: { effort: "medium", format: { type: "json_schema", schema: { required: ["summary", "items"] } } } });
+    expect(request.system).toContain("This log is still open");
+  });
+});
+
+describe("renderLog", () => {
+  it("writes who said what, when and where, and the tools the assistant used", () => {
+    expect(renderLog(entries)).toBe(
+      ["[18:00, voice call aaaaaaaa] User: Keep it short please.", "[18:00, voice call aaaaaaaa] Assistant: Will do.", '[18:00, voice call aaaaaaaa] (Assistant used note {"fact":"Prefers short answers"})', "[18:01, Fake Chat] User: Book the fake dentist."].join("\n"),
+    );
+  });
+});
+
+describe("draft", () => {
+  it("tidies the items and leaves facts and lessons for the settle pass", async () => {
+    mockClaude(reply(fakeDraft));
+    const { reflection } = await draft(createClient(env.ANTHROPIC_API_KEY), input);
+    expect(reflection).toMatchObject({ summary: "Dumped a few fake things. Ended happy.", facts: [], lessons: [] });
+    expect(reflection.items.map((item) => item.title)).toEqual(["A fake shed cinema", "How long does fake paint take to dry?"]);
+  });
+
+  it("won't take a full reflection", async () => {
+    mockClaude(reply(fakeReflection));
+    expect(await draft(createClient(env.ANTHROPIC_API_KEY), input).catch((e) => e)).toBeInstanceOf(ReflectionError);
   });
 });
 

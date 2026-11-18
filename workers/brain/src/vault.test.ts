@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { UserBrain } from "./brain";
 import type { Reflection } from "./reflection";
 import { noTaskFields } from "./testing";
-import { addLines, editSection, noteTitle, slugify, topicPath, londonDate, londonDay, MAX_VERSIONS_PER_NOTE, nextLondonMidnight, readLearned, rebuildLinks, replaceAbout, replaceSessionLines, restoreVersion, sessionNotePath, splitLearned, versionsOf, writeConsolidation, writeFile, writeReflection, type ReflectedSession, withFieldsLine, withSummary, mergeArea } from "./vault";
+import { addLines, editSection, filedBy, noteTitle, slugify, topicPath, londonDate, londonDay, MAX_VERSIONS_PER_NOTE, nextLondonMidnight, readLearned, rebuildLinks, replaceAbout, replaceSessionLines, restoreVersion, sessionNotePath, splitLearned, versionsOf, writeConsolidation, writeFile, writeReflection, type ReflectedSession, withFieldsLine, withSummary, mergeArea } from "./vault";
 
 const reflection: Reflection = { items: [], summary: "Asked about fake things.", facts: ["Prefers short answers"], lessons: [] };
 
@@ -177,6 +177,34 @@ describe("filing dumped items", () => {
       const before = files(sql);
       writeReflection(sql, session({ reflection: dumped }), "2026-11-10T20:00:00Z");
       expect(files(sql)).toEqual(before);
+    });
+  });
+
+  it("removes what an earlier filing of the same session wrote and no longer wants, and keeps the versions", async () => {
+    await inVault("vault_items_refiled", (sql) => {
+      writeReflection(sql, session({ reflection: dumped }), "2026-11-10T19:00:00Z", { draft: true });
+      expect(body(sql, "USER.md")).not.toContain("Prefers short answers");
+      writeReflection(sql, session({ reflection: { ...reflection, items: [{ ...dumped.items[1], topics: ["diy"] }] } }), "2026-11-10T20:00:00Z");
+      expect(files(sql).map((f) => f.path)).toEqual(["USER.md", "questions/2026-11-10-how-long-does-fake-paint-take-to-dry.md", "sessions/2026-11-10-aaaaaaaa.md", "topics/diy.md"]);
+      expect(body(sql, "USER.md")).toContain("Prefers short answers");
+      expect(versionsOf(sql, "ideas/2026-11-10-a-fake-shed-cinema.md").map((v) => v.operation)).toEqual(["deleted", "created"]);
+      expect(links(sql).filter((l) => l.dst.startsWith("ideas/"))).toEqual([]);
+    });
+  });
+
+  it("leaves a note the person has changed as it is, and keeps it filed under its topics", async () => {
+    await inVault("vault_items_changed", (sql) => {
+      writeReflection(sql, session({ reflection: dumped }), "2026-11-10T19:00:00Z", { draft: true });
+      const idea = "ideas/2026-11-10-a-fake-shed-cinema.md";
+      writeFile(sql, idea, "idea", { session_id: session().id, topics: ["garden"], status: "done" }, "# A fake shed cinema\n\nTheir own words.\n", "2026-11-10T19:30:00Z", "user");
+      expect(filedBy(sql, session().id)).toEqual([
+        { kind: "idea", title: "A fake shed cinema", changed: true },
+        { kind: "question", title: "How long does fake paint take to dry?", changed: false },
+      ]);
+      writeReflection(sql, session({ reflection: { ...reflection, items: [{ ...dumped.items[0], detail: "A different detail." }] } }), "2026-11-10T20:00:00Z");
+      expect(body(sql, idea)).toBe("# A fake shed cinema\n\nTheir own words.\n");
+      expect(files(sql).map((f) => f.path)).not.toContain("questions/2026-11-10-how-long-does-fake-paint-take-to-dry.md");
+      expect(body(sql, "topics/garden.md")).toBe("# garden\n\n## Filed\n\n- [[ideas/2026-11-10-a-fake-shed-cinema|A fake shed cinema]] ([[sessions/2026-11-10-aaaaaaaa]])\n");
     });
   });
 

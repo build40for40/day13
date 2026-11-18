@@ -41,7 +41,7 @@ describe("tidying the task fields", () => {
 
 describe("what the reflection reads", () => {
   it("includes the day the conversation started, so tomorrow can be dated", () => {
-    const text = renderInput({ user: { preferences: {}, about: "" }, memory: null, topics: [], turns: [], facts: [], today: "2026-11-18, Wednesday 18 November" });
+    const text = renderInput({ user: { preferences: {}, about: "" }, memory: null, topics: [], entries: [], today: "2026-11-18, Wednesday 18 November" });
     expect(text).toContain("# Conversation date\n\n2026-11-18, Wednesday 18 November");
   });
 });
@@ -74,7 +74,7 @@ describe("the notes API for tasks", () => {
     mockClaude({ content: [{ type: "text", text: "Noted." }] });
     await api(`/sessions/${id}/turns`, { sub, method: "POST", body: { text: "I need to pick up the costume tomorrow, it matters a lot" } });
     await api(`/sessions/${id}/end`, { sub, method: "POST" });
-    const output = { summary: "Fake.", items: [item({ title: "Pick up the fake costume", due: "2026-11-19", importance: "high", inferred: ["importance"] })], pages: [], facts: [], lessons: [] };
+    const output = { summary: "Fake.", items: [item({ title: "Pick up the fake costume", due: "2026-11-19", importance: "high", inferred: ["importance"] })] };
     mockClaude({ content: [{ type: "text", text: JSON.stringify(output) }] });
     await runDurableObjectAlarm(brainFor(sub));
     const tasks = (await (await api("/notes?kind=task", { sub })).json()) as { notes: NoteSummary[] };
@@ -161,7 +161,9 @@ describe("the migration that adds events", () => {
       sql.exec("DROP TABLE files");
       sql.exec("CREATE TABLE files (path TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('user', 'memory', 'session', 'idea', 'question', 'task', 'thought', 'topic')), frontmatter TEXT NOT NULL DEFAULT '{}', body TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL)");
       sql.exec("INSERT INTO files (path, kind, frontmatter, body, updated_at) VALUES ('tasks/old.md', 'task', '{\"status\":\"open\"}', '# Old fake task', '2026-11-01T00:00:00Z')");
-      sql.exec("DELETE FROM schema_migrations WHERE version = 2");
+      sql.exec("DROP TABLE batches");
+      sql.exec("DROP TABLE entries");
+      sql.exec("DELETE FROM schema_migrations WHERE version >= 2");
       expect(() => sql.exec("INSERT INTO files (path, kind, updated_at) VALUES ('events/x.md', 'event', 'now')")).toThrow();
 
       expect(migrate(sql, "2026-11-18T10:00:00Z")).toBe(1);
