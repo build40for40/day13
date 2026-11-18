@@ -26,6 +26,7 @@ export const DAILY_TURN_CAP = 200;
 export const REFLECTION_RETRY_MINUTES = [1, 5, 30, 120];
 const REFLECTION_TIMEOUT_MS = 10 * 60_000;
 const ITEM_KINDS_SQL = "('idea', 'question', 'task', 'event', 'note', 'thought')";
+const VOICE_CALL = "voice_call";
 /** How many open to-dos and events a reflection is shown, so it doesn't file one twice. */
 const MAX_EXISTING_ITEMS = 40;
 
@@ -75,6 +76,10 @@ export interface NewSession {
   id: string;
   started_at: string;
   opening_line: string;
+}
+
+export interface NewCall extends NewSession {
+  secret: string;
 }
 
 export interface SessionView {
@@ -295,6 +300,23 @@ export class UserBrain extends DurableObject<Env> {
     })();
     this.ctx.waitUntil(work);
     return new Response(readable, { headers: SSE_HEADERS });
+  }
+
+  /** Starts a session for a voice call, with a secret that lets the voice agent take its turns without the person's sign-in. */
+  async startCall(): Promise<NewCall> {
+    const session = await this.createSession();
+    const secret = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+    this.saveSetting(VOICE_CALL, JSON.stringify({ session_id: session.id, secret }));
+    return { ...session, secret };
+  }
+
+  /** One turn of the latest voice call, for whoever holds its secret. */
+  takeCallTurn(secret: string, text: string): Response {
+    this.init();
+    const call = JSON.parse(this.setting(VOICE_CALL) ?? "null") as { session_id: string; secret: string } | null;
+    const encoder = new TextEncoder();
+    if (!call || call.secret.length !== secret.length || !crypto.subtle.timingSafeEqual(encoder.encode(call.secret), encoder.encode(secret))) return error(401, "call_not_found");
+    return this.takeTurn(call.session_id, text);
   }
 
   /** Closes a voice session for good and has the alarm file what was said in it straight away. One where nothing was said is dropped instead. */

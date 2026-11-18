@@ -1,5 +1,7 @@
 # ElevenLabs voice adapter
 
+Superseded for the web page: the brain Worker now serves the agent's Custom LLM itself, with a brain per caller (`POST /voice/v1/chat/completions` in `workers/brain/README.md`). This adapter is kept as the single-user prototype.
+
 The adapter connects a private ElevenLabs agent to the deployed [Day 13 brain](../../workers/brain/README.md). It is a single-user demo. The WorkOS access token determines the vault for every turn.
 
 ## Run locally

@@ -23,13 +23,18 @@ Without `#connect` it's the example data. `src/plan.ts` is pure and tested, so t
 
 Not wired yet: a proper WorkOS sign-in (a pasted token is the only way in). Deploys go through CI: `.github/workflows/web-deploy.yml` builds `dist/dumpling` and deploys it as a static-assets Worker on every push to `main` that touches `apps/web`.
 
-## Private in-page voice demo
+## In-page voice
 
-The mic uses the ElevenLabs browser SDK to connect to the existing private Dumpling agent. Sign in with WorkOS sends the page to AuthKit and back to `/dumpling/` with a code, which the web Worker trades for an access token using PKCE, so there's no client secret. That needs `https://build40for40.com/dumpling/` as a redirect URI on the WorkOS app. The access token stays in this tab's session storage. The web Worker verifies the token with the brain Worker and checks the signed-in user ID before issuing a signed ElevenLabs URL. The current agent adapter is bound to a single vault.
+The mic uses the ElevenLabs browser SDK to talk to the Dumpling agent, and every signed-in person talks to their own brain.
 
-Set these secrets on the `dumpling` Cloudflare Worker before enabling the demo:
+Sign in with WorkOS sends the page to AuthKit and back to `/dumpling/` with a code, which the web Worker trades for an access token using PKCE, so there's no client secret. That needs `https://build40for40.com/dumpling/` as a redirect URI on the WorkOS app. The access token stays in this tab's session storage.
 
-- `ELEVENLABS_API_KEY` — server-side key allowed to request signed voice sessions for the private agent.
-- `DUMPLING_VOICE_OWNER_ID` — the WorkOS user ID of the exact same vault owner as the agent adapter's WorkOS session. Check the identity against the brain's authenticated `GET /me` before configuring it.
+Tapping the mic posts that token to the web Worker's `/dumpling/api/voice/session`. The Worker has the brain start a call for the person (`POST /voice/calls`, see `workers/brain/README.md`), asks ElevenLabs for a signed URL, and returns both. The page starts the conversation with the call token as the `dumpling_call` dynamic variable, and ends the brain session when the call drops so it's filed straight away.
 
-The `BRAIN` service binding must point to the deployed `day13-brain` Worker. Keep authentication on in ElevenLabs. Without the secrets, the mic shows the existing authenticated Preview as a fallback. The sample task list is independent of the voice demo.
+The `dumpling` Cloudflare Worker needs one secret, `ELEVENLABS_API_KEY`: a server-side key allowed to request signed voice sessions for the agent. Without it the mic shows the ElevenLabs Preview as a fallback. The `BRAIN` service binding must point to the deployed `day13-brain` Worker.
+
+The ElevenLabs agent needs:
+
+- **Custom LLM:** Chat Completions, server URL `https://build40for40.com/day13/api/voice/v1`, any model ID, fallback models off.
+- **System prompt:** a line reading `DUMPLING_CALL={{dumpling_call}}`. The brain reads the call token from it and ignores the rest, since its own prompt decides what Dumpling says.
+- **Authentication:** on, so a conversation can only start from a signed URL.

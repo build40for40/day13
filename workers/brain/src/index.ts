@@ -5,6 +5,7 @@ import { mcpHandler } from "./mcp/server";
 import { AUTHORIZE_PATH, revokeMcpGrants, signIn, type SignInEnv } from "./mcp/signin";
 import { parseProfilePatch } from "./profile";
 import { NOTE_KINDS, type NoteKind } from "./vault";
+import { callToken, VOICE_TURN_PATH, voiceTurn } from "./voice";
 import { authenticate, deleteWorkosUser } from "./workos";
 
 import type { NotePatch, UserBrain } from "./brain";
@@ -15,7 +16,7 @@ export { UserBrain } from "./brain";
 const MAX_BODY_BYTES = 64 * 1024;
 const MAX_TURN_CHARS = 8_000;
 
-type Brain = Rpc<Pick<UserBrain, "getProfile" | "updateProfile" | "wipe" | "createSession" | "takeTurn" | "finishSession" | "getSession" | "listNotes" | "getNote" | "updateNote" | "listVersions" | "restoreVersion">>;
+type Brain = Rpc<Pick<UserBrain, "getProfile" | "updateProfile" | "wipe" | "createSession" | "startCall" | "takeTurn" | "finishSession" | "getSession" | "listNotes" | "getNote" | "updateNote" | "listVersions" | "restoreVersion">>;
 
 /** The voice API at `/day13/api`, signed in with a WorkOS access token. */
 const api = {
@@ -23,12 +24,16 @@ const api = {
     const { pathname } = new URL(request.url);
     if (pathname !== BASE_PATH && !pathname.startsWith(`${BASE_PATH}/`)) return error(404, "not_found");
 
-    const userId = await authenticate(request, env.WORKOS_CLIENT_ID);
-    if (!userId) return error(401, "sign_in_required", undefined, { "WWW-Authenticate": 'Bearer realm="day13"' });
-
-    const brain = env.USER_BRAIN.get(env.USER_BRAIN.idFromName(userId)) as unknown as Brain;
+    const path = pathname.slice(BASE_PATH.length);
     try {
-      return await route(request, pathname.slice(BASE_PATH.length), userId, brain, env);
+      // The voice agent can't sign in as the caller, so this route checks the call's own token instead.
+      if (path === VOICE_TURN_PATH) return await voiceTurn(request, env);
+
+      const userId = await authenticate(request, env.WORKOS_CLIENT_ID);
+      if (!userId) return error(401, "sign_in_required", undefined, { "WWW-Authenticate": 'Bearer realm="day13"' });
+
+      const brain = env.USER_BRAIN.get(env.USER_BRAIN.idFromName(userId)) as unknown as Brain;
+      return await route(request, path, userId, brain, env);
     } catch (e) {
       if (e instanceof HttpError) return e.toResponse();
       throw e;
@@ -84,6 +89,13 @@ async function route(request: Request, path: string, userId: string, brain: Brai
     if (method !== "POST") return methodNotAllowed("POST");
     if (!env.ANTHROPIC_API_KEY) return error(503, "live_sessions_unavailable");
     return json(await brain.createSession(), 201);
+  }
+
+  if (path === "/voice/calls") {
+    if (method !== "POST") return methodNotAllowed("POST");
+    if (!env.ANTHROPIC_API_KEY) return error(503, "live_sessions_unavailable");
+    const { secret, ...call } = await brain.startCall();
+    return json({ ...call, call_token: callToken(userId, secret) }, 201);
   }
 
   const session = path.match(/^\/sessions\/([A-Za-z0-9-]+)(?:\/(turns|end))?$/);

@@ -81,6 +81,8 @@ Every route needs `Authorization: Bearer <WorkOS access token>`, and answers `40
 | `POST /sessions` | Starts a voice session, ending any still open. `201 { id, started_at, opening_line }` |
 | `POST /sessions/:id/turns` | `{ "text": "what they said" }`. Streams `text` events with a `delta`, then `done` with `session_ended`, or `error`. If the reply fails after a task or event write, that completed change is kept. Check the current list before retrying |
 | `POST /sessions/:id/end` | `202` with the session, and what was said in it is filed a moment later. `204` when nothing was said, since there's nothing to keep |
+| `POST /voice/calls` | Starts a session for a voice call. `201 { id, started_at, opening_line, call_token }`. The token lets the voice agent take that call's turns and stops working when the next call starts |
+| `POST /voice/v1/chat/completions` | The voice agent's Custom LLM, in OpenAI Chat Completions format. No WorkOS token: the agent's system prompt carries `DUMPLING_CALL=<call_token>`, which picks the brain. Takes the latest user message as the turn and streams the reply as chunks. `401 call_not_found` without a current token |
 | `GET /sessions/:id` | The transcript, noted facts and `reflection_status`: `not_ended`, `pending`, `done` once a pass has filed everything said in it, or `failed` |
 | `GET /notes?kind=` | Every note, newest first, each with its filing `fields`. `kind` is one of `user`, `memory`, `session`, `idea`, `question`, `task`, `event`, `note`, `thought`, `topic`, `person` |
 | `GET /notes/<path>` | One note, with the notes that link to it in `linked_from` |
