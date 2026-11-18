@@ -81,6 +81,37 @@ describe("the notes API for tasks", () => {
     return tasks.notes[0].path;
   }
 
+  it("commits task and event changes during a voice turn, visible through the web notes API", async () => {
+    const sub = fakeUser();
+    const { id } = await (await api("/sessions", { sub, method: "POST" })).json() as { id: string };
+    const paths = await runInDurableObject(brainFor(sub), (brain: UserBrain) => {
+      const task = brain.addItem({ kind: "task", title: "Pick up the fake costume" });
+      const event = brain.addItem({ kind: "event", title: "Fake concert", start: "2026-11-22" });
+      if (typeof task === "string" || typeof event === "string") throw new Error("Couldn't seed test notes");
+      return { task: task.path, event: event.path };
+    });
+
+    const model = mockClaude(
+      { stop_reason: "tool_use", content: [
+        { type: "tool_use", name: "list_tasks", input: {} },
+        { type: "tool_use", name: "list_events", input: {} },
+      ] },
+      { stop_reason: "tool_use", content: [
+        { type: "tool_use", name: "update_task", input: { path: paths.task, due: "2026-11-20" } },
+        { type: "tool_use", name: "update_event", input: { path: paths.event, start: "2026-11-20T18:00" } },
+      ] },
+      { content: [{ type: "text", text: "Both moved to Friday." }] },
+    );
+    const reply = await api(`/sessions/${id}/turns`, { sub, method: "POST", body: { text: "Move picking up the fake costume and the fake concert to Friday. The concert is at six." } });
+    expect(await reply.text()).toContain("event: done");
+    expect(model.requests[0].tools).toEqual(expect.arrayContaining([expect.objectContaining({ name: "update_task" }), expect.objectContaining({ name: "update_event" })]));
+
+    const task = await (await api(`/notes/${paths.task}`, { sub })).json();
+    const event = await (await api(`/notes/${paths.event}`, { sub })).json();
+    expect(task).toMatchObject({ fields: { due: "2026-11-20" } });
+    expect(event).toMatchObject({ fields: { start: "2026-11-20T18:00" } });
+  });
+
   it("lists the filing fields with each task", async () => {
     const sub = fakeUser();
     const path = await dumpOneTask(sub);

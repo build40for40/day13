@@ -86,8 +86,12 @@ syncSignIn()
 
 const messages: Record<string, string> = {
   voice_not_configured: 'Dumpling voice still needs server setup.',
-  voice_account_not_allowed: 'This WorkOS account does not have access to this voice demo.',
+  voice_account_not_allowed: 'You’re signed in, but voice is only switched on for one account for now.',
   NotAllowedError: 'Allow microphone access for this site, then tap the mic again.',
+}
+
+function refreshBrainList() {
+  void window.DumplingBrain?.reload().catch(() => {})
 }
 
 async function toggleVoice() {
@@ -122,8 +126,10 @@ async function toggleVoice() {
       connectionType: 'websocket',
       onMessage({ source, message }) {
         if (source === 'user') window.dispatchEvent(new CustomEvent('dumpling:transcript', { detail: message }))
+        else refreshBrainList()
       },
       onDisconnect() {
+        refreshBrainList()
         active = undefined
         setCallState(false)
         show('Call ended.')

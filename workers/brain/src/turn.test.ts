@@ -33,10 +33,10 @@ describe("liveRequest", () => {
       { type: "text", text: LIVE_PROMPT },
       { type: "text", text: "the context", cache_control: { type: "ephemeral" } },
     ]);
-    expect(request.tools).toMatchObject([
-      { name: "note", strict: true },
-      { name: "recall", strict: true },
-    ]);
+    expect(request.tools).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "note", strict: true }),
+      expect.objectContaining({ name: "recall", strict: true }),
+    ]));
     expect(request).toMatchObject({ model: "claude-sonnet-5-5", cache_control: { type: "ephemeral" }, output_config: { effort: "low" }, thinking: { type: "between_tools" } });
     expect(request).not.toHaveProperty("tool_choice");
   });

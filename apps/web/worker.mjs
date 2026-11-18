@@ -53,7 +53,6 @@ export default {
     if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405)
     try {
       if (path === BASE + '/sign-in/token') {
-        if (!env.DUMPLING_VOICE_OWNER_ID || !env.ELEVENLABS_API_KEY) return json({ error: 'voice_not_configured' }, 503)
         const { code, code_verifier } = await request.json().catch(() => ({})) ?? {}
         if (typeof code !== 'string' || !/^[A-Za-z0-9_-]{10,512}$/.test(code) || typeof code_verifier !== 'string' || !PKCE_VALUE.test(code_verifier)) {
           return json({ error: 'invalid_sign_in' }, 400)
@@ -62,8 +61,7 @@ export default {
         if (!upstream.ok) return json({ error: 'sign_in_unavailable' }, upstream.status === 400 ? 400 : 502)
         const data = await upstream.json()
         if (typeof data.access_token !== 'string') return json({ error: 'sign_in_unavailable' }, 502)
-        const denied = await verifyOwner(env, 'Bearer ' + data.access_token)
-        return denied ?? json({ access_token: data.access_token })
+        return json({ access_token: data.access_token })
       }
 
       if (path !== BASE + '/voice/session') return json({ error: 'not_found' }, 404)
