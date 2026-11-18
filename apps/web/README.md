@@ -11,4 +11,4 @@ pnpm --filter @day13/web fake   # against the fake brain
 pnpm --filter @day13/web test && pnpm --filter @day13/web typecheck
 ```
 
-Not wired yet: WorkOS sign-in, and the brain behind the list (`src/brain.ts` is ready for it). Deploys go through CI: `.github/workflows/web-deploy.yml` builds `dist/dumpling` and deploys it as a static-assets Worker on every push to `main` that touches `apps/web`.
+Not wired yet: WorkOS sign-in, and the brain behind the list (`src/brain.ts` is ready for it). Deploys go through CI: `.github/workflows/web-deploy.yml` builds `dist/dumpling` and deploys it as a static-assets Worker on every push to `main` that touches `apps/web`. A pull request that touches it gets a preview link in a comment, once the first deploy has created the Worker.
