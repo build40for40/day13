@@ -4,7 +4,6 @@ import { getAccessToken, sessionChanges, setAccessToken } from './session'
 const mic = document.querySelector<HTMLButtonElement>('#mic')!
 const controls = document.querySelector<HTMLDivElement>('#voice-controls')!
 const status = document.querySelector<HTMLParagraphElement>('#voice-status')!
-const login = document.querySelector<HTMLAnchorElement>('#voice-login')!
 const signInButton = document.querySelector<HTMLButtonElement>('#voice-sign-in')!
 const mute = document.querySelector<HTMLButtonElement>('#voice-mute')!
 const preview = document.querySelector<HTMLAnchorElement>('#voice-preview')!
@@ -34,37 +33,47 @@ async function post(path: string, init: RequestInit = {}) {
   return { response, data: await response.json() }
 }
 
-async function signIn() {
-  const { response, data } = await post('/device/start')
-  if (!response.ok) throw new Error(data.error)
-  const url = new URL(data.verification_uri_complete)
-  if (url.protocol !== 'https:' || !url.hostname.endsWith('.authkit.app')) throw new Error('sign_in_unavailable')
+const pendingKey = 'dumpling.sign-in'
 
-  login.href = url.href
-  login.hidden = false
-  show('Sign in with WorkOS and confirm code ' + data.user_code + '.')
-  const deadline = Date.now() + data.expires_in * 1000
-  let interval = Math.max(data.interval ?? 5, 5) * 1000
+function base64Url(bytes: Uint8Array) {
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+async function signIn() {
+  const state = base64Url(crypto.getRandomValues(new Uint8Array(32)))
+  const verifier = base64Url(crypto.getRandomValues(new Uint8Array(32)))
+  const challenge = base64Url(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))))
+  sessionStorage.setItem(pendingKey, JSON.stringify({ state, verifier }))
+  location.assign(api + '/sign-in?' + new URLSearchParams({ state, code_challenge: challenge }))
+}
+
+async function finishSignIn() {
+  const url = new URL(location.href)
+  const code = url.searchParams.get('code')
+  const state = url.searchParams.get('state')
+  if (!state || (!code && !url.searchParams.has('error'))) return
+  for (const name of ['code', 'state', 'error', 'error_description']) url.searchParams.delete(name)
+  history.replaceState(null, '', url)
+
+  let pending: { state?: string; verifier?: string } = {}
   try {
-    while (Date.now() < deadline) {
-      await new Promise(resolve => setTimeout(resolve, interval))
-      if (Date.now() >= deadline) break
-      const result = await post('/device/poll', {
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ device_code: data.device_code }),
-      })
-      if (result.response.ok && typeof result.data.access_token === 'string') {
-        setAccessToken(result.data.access_token)
-        show('Signed in. Tap the mic to start.')
-        return
-      }
-      if (result.data.error === 'slow_down') interval += 5000
-      else if (result.data.error !== 'authorization_pending') throw new Error(result.data.error)
-    }
-    throw new Error('expired_token')
-  } finally {
-    login.hidden = true
-    login.removeAttribute('href')
+    pending = JSON.parse(sessionStorage.getItem(pendingKey) ?? '{}')
+    sessionStorage.removeItem(pendingKey)
+  } catch {
+    // Without the stored verifier the sign-in can't be finished.
+  }
+  try {
+    if (!code || pending.state !== state) throw new Error('sign_in_unavailable')
+    show('Signing in…')
+    const { response, data } = await post('/sign-in/token', {
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, code_verifier: pending.verifier }),
+    })
+    if (!response.ok || typeof data.access_token !== 'string') throw new Error(data.error)
+    setAccessToken(data.access_token)
+    show('Signed in. Tap the mic to start.')
+  } catch (error) {
+    show(messages[error instanceof Error ? error.message : ''] ?? 'Couldn’t sign in. Tap Sign in to try again.')
   }
 }
 
@@ -78,7 +87,6 @@ syncSignIn()
 const messages: Record<string, string> = {
   voice_not_configured: 'Dumpling voice still needs server setup.',
   voice_account_not_allowed: 'This WorkOS account does not have access to this voice demo.',
-  expired_token: 'The sign-in expired. Tap the mic to try again.',
   NotAllowedError: 'Allow microphone access for this site, then tap the mic again.',
 }
 
@@ -95,7 +103,7 @@ async function toggleVoice() {
     }
     const accessToken = getAccessToken()
     if (!accessToken) {
-      show('Preparing WorkOS sign-in…')
+      show('Opening sign-in…')
       await signIn()
       return
     }
@@ -139,7 +147,7 @@ async function toggleVoice() {
 }
 
 signInButton.addEventListener('click', () => {
-  if (!getAccessToken()) void toggleVoice()
+  if (!getAccessToken()) void signIn()
 })
 mic.addEventListener('dumpling:voice-toggle', () => void toggleVoice())
 mute.addEventListener('click', () => {
@@ -149,4 +157,5 @@ mute.addEventListener('click', () => {
   mute.textContent = muted ? 'Unmute microphone' : 'Mute microphone'
   show(muted ? 'Microphone muted.' : 'Listening…')
 })
+void finishSignIn()
 window.addEventListener('pagehide', () => void active?.endSession())
