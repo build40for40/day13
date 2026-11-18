@@ -99,10 +99,10 @@ function consentPage(details: ConsentDescription, handle: string): string {
   const who = details.clientDomain ? `It comes from <strong>${escape(details.clientDomain)}</strong>.` : "It picked its own name, so we can't vouch for it.";
   const local = details.redirectIsLoopback ? `<p class="warn">This hands access to an app on your computer. Only carry on if you just started connecting from it.</p>` : "";
   return html(
-    `Connect ${details.clientName} to your brain`,
-    `<h1>Let ${name} into your brain?</h1>
-<p>${who} It'll be able to read what's in your brain and add to it. Access goes to <strong>${escape(details.redirectHost)}</strong>.</p>
-${local}<p>Next you'll sign in, so it opens the right brain.</p>
+    `Connect ${details.clientName} to Dumpling`,
+    `<h1>Let ${name} into your Dumpling?</h1>
+<p>${who} It'll be able to read what's in your Dumpling and add to it. Access goes to <strong>${escape(details.redirectHost)}</strong>.</p>
+${local}<p>Next you'll sign in, so it opens the right Dumpling.</p>
 <form method="post" action="${AUTHORIZE_PATH}"><input type="hidden" name="handle" value="${escape(handle)}">
 <button name="decision" value="approve">Allow</button><button name="decision" value="deny">No thanks</button></form>`,
   );

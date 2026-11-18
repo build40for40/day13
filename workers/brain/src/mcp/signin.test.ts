@@ -30,7 +30,7 @@ describe("sign-in for MCP clients", () => {
   it("asks first, on a page that can't be framed", async () => {
     const { consent, handle, html } = await openConsent();
     expect(consent.status).toBe(200);
-    expect(html).toContain("Let Fake MCP client into your brain?");
+    expect(html).toContain("Let Fake MCP client into your Dumpling?");
     expect(html).toContain("<strong>client.example</strong>");
     expect(handle).not.toBe("");
     expect(consent.headers.get("X-Frame-Options")).toBe("DENY");
