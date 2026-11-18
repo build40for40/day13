@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   deploy:
-    name: Deploy to build40for40.com/parker
+    name: Deploy to build40for40.com/dumpling
     runs-on: ubuntu-latest
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
