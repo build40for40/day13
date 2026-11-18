@@ -22,3 +22,14 @@ Open the page with `#connect` and paste a WorkOS access token (demo only: it's k
 Without `#connect` it's the example data. `src/plan.ts` is pure and tested, so the rules can change in one place. This needs the brain to file due dates, importance and area, and to allow `PATCH /notes`. Until then every task is undated.
 
 Not wired yet: a proper WorkOS sign-in (a pasted token is the only way in). Deploys go through CI: `.github/workflows/web-deploy.yml` builds `dist/dumpling` and deploys it as a static-assets Worker on every push to `main` that touches `apps/web`.
+
+## Private in-page voice demo
+
+The mic uses the ElevenLabs browser SDK to connect to the existing private Dumpling agent. WorkOS device sign-in starts from the page and the access token stays in browser memory. The web Worker verifies the token with the brain Worker and checks the signed-in user ID before issuing a signed ElevenLabs URL. The current agent adapter is bound to a single vault.
+
+Set these secrets on the `dumpling` Cloudflare Worker before enabling the demo:
+
+- `ELEVENLABS_API_KEY` — server-side key allowed to request signed voice sessions for the private agent.
+- `DUMPLING_VOICE_OWNER_ID` — the WorkOS user ID of the exact same vault owner as the agent adapter's WorkOS session. Check the identity against the brain's authenticated `GET /me` before configuring it.
+
+The `BRAIN` service binding must point to the deployed `day13-brain` Worker. Keep authentication on in ElevenLabs. Without the secrets, the mic shows the existing authenticated Preview as a fallback. The sample task list is independent of the voice demo.
