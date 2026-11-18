@@ -87,8 +87,9 @@ describe("the MCP tools", () => {
 
     await callTool(token, "update_task", { path, due: "2099-02-02" });
     const moved = toolText(await callTool(token, "read_note", { path: path.replace(/\.md$/, "") }));
-    expect(moved).toContain("Due 2099-02-02. Who: Sam.");
+    expect(moved).toContain("Due 2099-02-02. Who: [[people/sam|Sam]].");
     expect(moved).not.toContain("2099-01-30");
+    expect(toolText(await callTool(token, "read_note", { path: "people/sam" }))).toContain(`- [[${path.replace(/\.md$/, "")}|Book the fake MOT]]`);
 
     expect(toolText(await callTool(token, "update_task", { path, status: "done" }))).toBe(`Updated ${path}.`);
     expect(toolText(await callTool(token, "list_tasks"))).not.toContain("Book the fake MOT");

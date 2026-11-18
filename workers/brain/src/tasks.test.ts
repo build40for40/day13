@@ -59,7 +59,7 @@ describe("filing tasks and events", () => {
       const task = state.storage.sql.exec<{ path: string; frontmatter: string; body: string }>("SELECT path, frontmatter, body FROM files WHERE kind = 'task'").one();
       expect(task.path).toBe("tasks/2026-11-18-pick-up-the-fake-costume.md");
       expect(JSON.parse(task.frontmatter)).toMatchObject({ due: "2026-11-19", importance: "high", area: "personal", people: ["the kids"], location: "school", status: "open", inferred: ["importance"] });
-      expect(task.body).toContain("Due 2026-11-19. Where: school. Who: the kids.");
+      expect(task.body).toContain("Due 2026-11-19. Where: school. Who: [[people/kids|the kids]].");
       const event = state.storage.sql.exec<{ path: string; frontmatter: string }>("SELECT path, frontmatter FROM files WHERE kind = 'event'").one();
       expect(event.path).toBe("events/2026-11-18-fake-school-concert.md");
       expect(JSON.parse(event.frontmatter)).toMatchObject({ start: "2026-11-21T19:30", status: "open" });
@@ -74,7 +74,7 @@ describe("the notes API for tasks", () => {
     mockClaude({ content: [{ type: "text", text: "Noted." }] });
     await api(`/sessions/${id}/turns`, { sub, method: "POST", body: { text: "I need to pick up the costume tomorrow, it matters a lot" } });
     await api(`/sessions/${id}/end`, { sub, method: "POST" });
-    const output = { summary: "Fake.", items: [item({ title: "Pick up the fake costume", due: "2026-11-19", importance: "high", inferred: ["importance"] })], facts: [], lessons: [] };
+    const output = { summary: "Fake.", items: [item({ title: "Pick up the fake costume", due: "2026-11-19", importance: "high", inferred: ["importance"] })], pages: [], facts: [], lessons: [] };
     mockClaude({ content: [{ type: "text", text: JSON.stringify(output) }] });
     await runDurableObjectAlarm(brainFor(sub));
     const tasks = (await (await api("/notes?kind=task", { sub })).json()) as { notes: NoteSummary[] };

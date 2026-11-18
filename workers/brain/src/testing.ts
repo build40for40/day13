@@ -153,6 +153,10 @@ export const fakeReflection = {
     { kind: "question", title: "How long does fake paint take to dry?", detail: "Asked about drying times.", answer: "About four fake hours.", topics: ["garden"], ...noTaskFields },
     { kind: "task", title: " ", detail: "No title, so it's dropped.", answer: "", topics: [], ...noTaskFields },
   ],
+  pages: [
+    { kind: "topic", name: " Garden ", summary: "  Planning to turn the fake shed into a cinema.   Paint is next. ", project: true },
+    { kind: "topic", name: "never filed under", summary: "Should be dropped.", project: false },
+  ],
   facts: ["Has a fake shed", "Has a fake shed", " "],
   lessons: ["Short answers land best", " "],
 };

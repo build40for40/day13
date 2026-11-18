@@ -1,6 +1,6 @@
 // A typed client for the brain Worker (workers/brain/README.md is the spec). No UI in here.
 
-export type NoteKind = 'user' | 'memory' | 'session' | 'idea' | 'question' | 'task' | 'event' | 'thought' | 'topic'
+export type NoteKind = 'user' | 'memory' | 'session' | 'idea' | 'question' | 'task' | 'event' | 'note' | 'thought' | 'topic' | 'person'
 
 export type Session = { id: string; started_at: string; opening_line?: string }
 
