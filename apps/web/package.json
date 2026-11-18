@@ -1,0 +1,23 @@
+{
+  "name": "@day13/web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The day 13 web client. A bare shell: no framework and no UI yet.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "fake": "vite --mode fake",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "jsdom": "^31.0.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.0",
+    "wrangler": "^4.163.0"
+  }
+}

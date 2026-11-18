@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Parker: dump anything, and it's filed for you. Tomorrow, at a glance.">
+<title>Parker</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@1,9..144,500&family=Inter:wght@400;500;600&display=swap">
+<style>
+[hidden] { display: none !important }
+/* Layout: a thin pool on top as the trust layer. Then Today, then Tomorrow. Future is its own tab. Nothing red anywhere: colour only says which part of life it belongs to. Single dark look by choice. */
+:root { color-scheme: dark; --water: #07161d; --deep: #0b2c36; --card: #0f2a34; --foam: #d9f3ee; --mute: #86aaaa; --line: rgba(217, 243, 238, .13); --gold: #ffd36b; --font: 'Inter', system-ui, sans-serif; --serif: 'Fraunces', Georgia, serif }
+* { box-sizing: border-box }
+html, body { height: 100% }
+body { margin: 0; background: var(--water); color: var(--foam); font-family: var(--font); overflow: hidden }
+.phone { height: 100%; max-width: 520px; margin: 0 auto; display: flex; flex-direction: column; background: linear-gradient(180deg, var(--deep), var(--water) 55%) }
+.pad { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)) }
+#pool { position: relative; flex: none; height: clamp(130px, 19vh, 190px); margin-top: env(safe-area-inset-top, 0px) }
+canvas { position: absolute; inset: 0; width: 100%; height: 100% }
+.seg { display: flex; gap: 4px; padding-block: 8px 4px }
+.seg button { flex: 1; border: 1px solid var(--line); background: transparent; color: var(--mute); border-radius: 999px; padding: 9px 0; font: 500 14px var(--font); cursor: pointer }
+.seg button[aria-pressed=true] { background: var(--foam); color: var(--water); border-color: var(--foam) }
+.scroll { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 24px }
+h2 { font: italic 500 32px/1.05 var(--serif); margin: 22px 0 0; display: flex; align-items: baseline; gap: 10px }
+h2 small { font: 400 14px var(--font); color: var(--mute) }
+.stack { display: flex; flex-direction: column; gap: 10px; margin-top: 14px }
+.card { display: flex; align-items: center; gap: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 22px; padding: 15px 14px 15px 20px; transition: background .2s }
+.card.hl, .up.hl { background: #16384a }
+.txt { flex: 1; min-width: 0 }
+.short { font-size: 20px; font-weight: 600; line-height: 1.15; letter-spacing: -.01em }
+.why { margin-top: 3px; font-size: 13px; color: var(--mute) }
+.tick { flex: none; width: 44px; height: 44px; border-radius: 50%; border: 2px solid var(--c); background: transparent; color: transparent; cursor: pointer; display: grid; place-items: center; font-size: 19px; padding: 0 }
+.tick:hover, .tick:active { background: color-mix(in srgb, var(--c) 30%, transparent); color: var(--foam) }
+.group { flex-direction: column; align-items: stretch; gap: 2px; background: radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--c) 24%, transparent), transparent 65%), var(--card) }
+.gh { padding-bottom: 6px; font: italic 500 17px var(--serif) }
+.sub-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line) }
+.who { font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: #06141a; background: var(--c); border-radius: 999px; padding: 2px 8px; flex: none }
+.sub-row .short { font-size: 17px }
+.empty { color: var(--mute); font-size: 16px; margin: 14px 0 0 }
+.up { display: flex; align-items: center; gap: 12px; padding: 13px 8px; border-bottom: 1px solid var(--line); border-radius: 10px; font-size: 16px }
+.up i { width: 10px; height: 10px; border-radius: 50%; background: var(--c); flex: none }
+.up .n { flex: 1; min-width: 0 }
+.up .d { color: var(--mute); font-size: 13px; font-variant-numeric: tabular-nums }
+.label { font-size: 12px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; color: var(--mute); margin: 26px 0 4px }
+.donebtn { display: flex; justify-content: space-between; width: 100%; background: none; border: 0; color: var(--mute); font: 500 13px var(--font); padding: 0; margin-top: 30px; cursor: pointer }
+.done-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; color: var(--mute); font-size: 15px }
+.done-row span { flex: 1; text-decoration: line-through }
+.link { background: transparent; border: 0; color: var(--mute); font: 500 12px var(--font); text-decoration: underline; cursor: pointer; padding: 4px 0 }
+.bar { flex: none; padding-top: 10px; padding-bottom: max(12px, env(safe-area-inset-bottom, 0px)); background: rgba(7, 22, 29, .96); border-top: 1px solid var(--line) }
+.bar form { display: flex; gap: 8px; align-items: center; background: #0d2b36; border: 1px solid var(--line); border-radius: 999px; padding: 6px 6px 6px 18px }
+.bar input { flex: 1; min-width: 0; background: transparent; border: 0; color: var(--foam); font: 16px var(--font); outline: none; padding: 8px 0 }
+.bar input::placeholder { color: var(--mute) }
+.mic { flex: none; width: 48px; height: 48px; border-radius: 50%; border: 0; background: var(--foam); color: var(--water); display: grid; place-items: center; cursor: pointer }
+.mic svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round }
+.toast { position: fixed; left: 16px; right: 16px; bottom: calc(90px + env(safe-area-inset-bottom, 0px)); max-width: 488px; margin: 0 auto; background: var(--foam); color: var(--water); border-radius: 14px; padding: 12px 14px; font-size: 14px; font-weight: 500; z-index: 5 }
+.toast[hidden] { display: none }
+.fine { color: var(--mute); font-size: 11px; margin: 26px 0 0 }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px }
+</style>
+</head>
+<body>
+<div class="phone">
+  <div id="pool" role="img" aria-label="Everything the brain remembers, as colour-coded bubbles"><canvas id="c"></canvas></div>
+  <div class="seg pad" id="seg"></div>
+  <div class="scroll pad" id="scroll">
+    <div id="plan">
+      <h2>Today <small id="d0"></small></h2><div class="stack" id="today"></div>
+      <h2>Tomorrow <small id="d1"></small></h2><div class="stack" id="tomorrow"></div>
+      <button class="donebtn" id="donelabel"></button><div id="donelist"></div>
+    </div>
+    <div id="future" hidden></div>
+    <p class="fine">Example data, made up for the Day 13 mind dump.</p>
+  </div>
+  <div class="bar pad">
+    <form id="f"><input id="in" autocomplete="off" placeholder="Dump anything. It gets filed." aria-label="Dump anything"><button type="button" class="mic" id="mic" aria-label="Talk (sample)"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button></form>
+  </div>
+  <div class="toast" id="toast" hidden></div>
+</div>
+
+<script>
+const reefs = [
+  { name: 'Meals', color: '#7be0b0', x: .13, kw: /pasta|dinner|meal|menu|recipe|rice|cook|lunch|snack|soup|cake|groceries/i },
+  { name: 'School', color: '#ffd36b', x: .33, kw: /costume|school|teacher|permission|museum/i },
+  { name: 'Work', color: '#62d6e8', x: .53, kw: /report|client|meeting|safety|invoice|email|supplier|dentist|call/i },
+  { name: 'Gifts', color: '#c3a6ff', x: .71, kw: /gift|birthday|present|toy|puzzle/i },
+  { name: 'Bali trip', color: '#8da2ff', x: .89, kw: /bali|villa|flight|passport|hotel|visa|ubud/i },
+  { name: 'Loose', color: '#9fb6c8', x: .5, kw: /$^/ },
+]
+const reef = (n) => reefs.find((r) => r.name === n)
+const base = new Date(2026, 10, 18) // Wednesday, today in the example
+let uid = 1; const now = Date.now()
+let items = [
+  { reef: 'Work', short: 'Safety summary', text: 'Send the safety summary to Dad', due: 0 },
+  { reef: 'Work', short: 'Supplier reply', text: 'Reply to the equipment supplier', due: 0 },
+  { reef: 'Work', short: 'Call dentist', text: 'Call the dentist for Sam’s check-up', due: 0 },
+  { reef: 'Meals', short: 'Swap dinner', text: 'Swap Thursday dinner, the school is serving pasta', due: 1, urgent: true, why: 'School has pasta' },
+  { reef: 'School', short: 'Costume', text: 'Pick up the costume for Friday’s school event', due: 2, lead: 1, why: 'Needed Friday' },
+  { reef: 'Meals', short: 'Kids’ lunchboxes', text: 'Pack the kids’ lunchboxes, no nuts', due: 1, theme: 'Meal prep', who: 'Kids' },
+  { reef: 'Meals', short: 'Soup for us', text: 'Defrost the soup for the grown-ups', due: 1, theme: 'Meal prep', who: 'Grown-ups' },
+  { reef: 'Meals', short: 'Kids’ snacks', text: 'Sunday prep: snack boxes for the kids', due: 4, theme: 'Meal prep', who: 'Kids' },
+  { reef: 'School', short: 'Permission slip', text: 'Sign the museum permission slip', due: 5 },
+  { reef: 'Meals', short: 'Sam’s cake', text: 'Order the dinosaur cake for Sam', due: 11, theme: 'Sam’s birthday' },
+  { reef: 'Gifts', short: 'Sam’s puzzle', text: 'Order the train puzzle for Sam', due: 12, theme: 'Sam’s birthday' },
+  { reef: 'Bali trip', short: 'Villa deposit', text: 'Pay the villa deposit', due: 15 },
+  { reef: 'Bali trip', short: 'Passports', text: 'Renew two passports before March', due: 38 },
+  { reef: 'Bali trip', short: 'Flight seats', text: 'Book window seats on both flights', due: 70 },
+  { reef: 'Bali trip', short: 'Packing list', text: 'Rainy-season packing list', due: 110 },
+  { reef: 'Bali trip', short: 'Cooking class', text: 'Confirm six places at the Ubud cooking class', due: 128 },
+  { reef: 'School', short: 'School email', text: 'Reply to the school email', due: 0, done: true, doneAt: now - 5 * 36e5 },
+  { reef: 'Work', short: 'Invoice', text: 'Approve the supplier invoice', due: 0, done: true, doneAt: now - 4 * 36e5 },
+].map((i) => ({ id: uid++, done: false, ...i }))
+
+// ---------- grouping ----------
+const eff = (i) => i.due - (i.lead || 0)
+const rank = (i) => (i.urgent ? 50 : 0) - eff(i) // urgent first, then soonest
+const openItems = () => items.filter((i) => !i.done)
+const isToday = (i) => !i.done && eff(i) <= 0
+const isTomorrow = (i) => !i.done && eff(i) === 1
+const future = () => openItems().filter((i) => eff(i) >= 2).sort((a, b) => eff(a) - eff(b))
+const doneItems = () => items.filter((i) => i.done).sort((a, b) => b.doneAt - a.doneAt)
+function entries(list) { // one entry per theme, so kids' and grown-ups' meal prep count once
+  const out = [], by = new Map()
+  for (const i of list) { if (i.theme && list.filter((x) => x.theme === i.theme).length > 1) { if (!by.has(i.theme)) { const e = { items: [], theme: i.theme }; by.set(i.theme, e); out.push(e) } by.get(i.theme).items.push(i) } else out.push({ items: [i] }) }
+  out.forEach((e) => { e.score = Math.max(...e.items.map(rank)) })
+  return out.map((e, k) => [e, k]).sort((a, b) => b[0].score - a[0].score || a[1] - b[1]).map((x) => x[0])
+}
+const fmtDate = (d) => new Date(base.getTime() + d * 864e5).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })
+
+// ---------- list ----------
+const $ = (id) => document.getElementById(id)
+function h(tag, cls, ...kids) { const e = document.createElement(tag); if (cls) e.className = cls; for (const k of kids) if (k != null) e.append(k); return e }
+let tab = 'plan', showDone = false, selId = null
+let toastTimer; function toast(msg) { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true }, 3400) }
+function complete(i) { const b = bubbles.find((x) => x.item === i); if (b) fx.push({ x: b.x, y: b.y, c: reef(i.reef).color, t: 0 }); i.done = true; i.doneAt = Date.now(); sync() }
+function sync() { bubbles = bubbles.filter((b) => !b.item.done); for (const i of items) if (!i.done && !bubbles.some((b) => b.item === i)) spawn(i, true); render() }
+function tick(i) { const b = h('button', 'tick', '✓'); b.setAttribute('aria-label', 'Done: ' + i.short); b.addEventListener('click', () => complete(i)); return b }
+function row(i) { const c = h('div', 'card'); c.dataset.id = i.id; c.style.setProperty('--c', reef(i.reef).color); const t = h('div', 'txt', h('div', 'short', i.short)); if (i.why) t.append(h('div', 'why', i.why)); c.append(t, tick(i)); return c }
+function groupCard(e) {
+  const same = e.items.every((x) => x.reef === e.items[0].reef), c = h('div', 'card group'); c.style.setProperty('--c', same ? reef(e.items[0].reef).color : '#d9f3ee')
+  c.append(h('div', 'gh', e.theme))
+  for (const i of e.items) { const r = h('div', 'sub-row'); r.dataset.id = i.id; r.style.setProperty('--c', reef(i.reef).color); if (i.who) r.append(h('span', 'who', i.who)); r.append(h('div', 'txt', h('div', 'short', i.short)), tick(i)); c.append(r) }
+  return c
+}
+function fill(el, list, emptyText) { el.replaceChildren(); const es = entries(list); es.forEach((e) => el.append(e.items.length > 1 ? groupCard(e) : row(e.items[0]))); if (!es.length) el.append(h('p', 'empty', emptyText)) }
+function render() {
+  const seg = $('seg'); seg.replaceChildren()
+  for (const [id, label] of [['plan', 'Today & tomorrow'], ['future', 'Future']]) { const b = h('button', null, label); b.setAttribute('aria-pressed', String(tab === id)); b.addEventListener('click', () => { tab = id; render() }); seg.append(b) }
+  $('plan').hidden = tab !== 'plan'; $('future').hidden = tab !== 'future'
+  const day = (n) => new Date(base.getTime() + n * 864e5).toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'short' })
+  $('d0').textContent = day(0); $('d1').textContent = day(1)
+  fill($('today'), items.filter(isToday), 'Today is clear.')
+  fill($('tomorrow'), items.filter(isTomorrow), 'Nothing planned. Enjoy it.')
+  const D = doneItems(), dl = $('donelabel'); dl.textContent = ''; dl.append(h('span', null, `Done · ${D.length}`), h('span', null, D.length ? (showDone ? 'Hide' : 'Show') : '')); dl.onclick = () => { showDone = !showDone; render() }
+  const dv = $('donelist'); dv.replaceChildren()
+  if (showDone) for (const i of D) { const r = h('div', 'done-row', h('span', null, i.short)); const b = h('button', 'link', 'Undo'); b.addEventListener('click', () => { i.done = false; sync() }); r.append(b); dv.append(r) }
+  const fv = $('future'); fv.replaceChildren()
+  const groups = [['This week', (i) => eff(i) <= 7], ['This month', (i) => eff(i) > 7 && eff(i) <= 31], ['Later', (i) => eff(i) > 31]]
+  for (const [name, test] of groups) { const L = future().filter(test); if (!L.length) continue; fv.append(h('div', 'label', name)); for (const i of L) { const r = h('div', 'up'); r.dataset.id = i.id; r.style.setProperty('--c', reef(i.reef).color); r.append(h('i'), h('span', 'n', i.short), h('span', 'd', fmtDate(i.due))); fv.append(r) } }
+  if (!future().length) fv.append(h('p', 'empty', 'Nothing coming up.'))
+}
+
+// ---------- the pool: a thin trust layer ----------
+const cv = $('c'), ctx = cv.getContext('2d'), pool = $('pool')
+let W = 1, H = 1, dpr = 1, bubbles = [], fx = [], t0 = performance.now()
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
+function size() { dpr = devicePixelRatio || 1; W = pool.clientWidth; H = pool.clientHeight; cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0) }
+new ResizeObserver(size).observe(pool); size()
+const anchor = (r) => ({ x: r.x * W, y: H * .5 })
+function spawn(item, fromTop) { const r = reef(item.reef), a = anchor(r); bubbles.push({ item, x: fromTop ? W / 2 : a.x + (Math.random() - .5) * 40, y: fromTop ? -10 : a.y + (Math.random() - .5) * 40, vx: 0, vy: 0, ph: Math.random() * 6.28, w: 16, h: 16 }) }
+items.filter((i) => !i.done).forEach((i) => spawn(i, false))
+function frame(tn) {
+  requestAnimationFrame(frame)
+  const t = (tn - t0) / 1000, sx = Math.min(1.2, W / 390); ctx.clearRect(0, 0, W, H)
+  const near = (i) => isToday(i) || isTomorrow(i) // these get a name; the rest are just remembered
+  for (const r of reefs) { if (!items.some((i) => !i.done && i.reef === r.name)) continue; const a = anchor(r), g = ctx.createRadialGradient(a.x, a.y, 0, a.x, a.y, 60 * sx); g.addColorStop(0, r.color + '2a'); g.addColorStop(1, r.color + '00'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(a.x, a.y, 60 * sx, 0, 6.3); ctx.fill() }
+  for (const b of bubbles) { ctx.font = '600 10px Inter, system-ui, sans-serif'; b.w = near(b.item) ? Math.max(30, ctx.measureText(b.item.short).width + 6) : 14; b.h = near(b.item) ? 36 : 14 }
+  const themes = new Map(); for (const b of bubbles) if (b.item.theme) { if (!themes.has(b.item.theme)) themes.set(b.item.theme, []); themes.get(b.item.theme).push(b) }
+  if (!reduce) {
+    for (const g of themes.values()) if (g.length > 1) { const cx = g.reduce((a, b) => a + b.x, 0) / g.length, cy = g.reduce((a, b) => a + b.y, 0) / g.length; for (const b of g) { b.vx += (cx - b.x) * .003; b.vy += (cy - b.y) * .003 } }
+    for (let a = 0; a < bubbles.length; a++) for (let c = a + 1; c < bubbles.length; c++) { const A = bubbles[a], B = bubbles[c], dx = B.x - A.x, dy = B.y - A.y, ox = (A.w + B.w) / 2 - Math.abs(dx), oy = (A.h + B.h) / 2 - Math.abs(dy)
+      if (ox > 0 && oy > 0) { if (ox < oy) { const f = Math.sign(dx || 1) * ox * .04; A.vx -= f; B.vx += f } else { const f = Math.sign(dy || 1) * oy * .04; A.vy -= f; B.vy += f } } }
+  }
+  for (const [, g] of themes) { if (g.length < 2) continue // a soft halo for things that belong together
+    const cx = g.reduce((a, b) => a + b.x, 0) / g.length, cy = g.reduce((a, b) => a + b.y, 0) / g.length, rad = Math.max(...g.map((b) => Math.hypot(b.x - cx, b.y - cy))) + 30
+    const same = g.every((b) => b.item.reef === g[0].item.reef), col = same ? reef(g[0].item.reef).color : '#d9f3ee'
+    const gr = ctx.createRadialGradient(cx, cy, rad * .15, cx, cy, rad); gr.addColorStop(0, col + '30'); gr.addColorStop(.75, col + '1a'); gr.addColorStop(1, col + '00'); ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(cx, cy, rad, 0, 6.3); ctx.fill() }
+  for (const b of bubbles) {
+    const i = b.item, r = reef(i.reef), a = anchor(r), n = near(i), far = Math.min(1, eff(i) / 60)
+    const tx = a.x + Math.cos(t * .3 + b.ph) * 34 * sx, ty = a.y + Math.sin(t * .4 + b.ph * 1.3) * 22 + far * 10
+    if (!reduce) { b.vx = (b.vx + (tx - b.x) * .01) * .92; b.vy = (b.vy + (ty - b.y) * .01) * .92; b.x += b.vx; b.y += b.vy } else { b.x = tx; b.y = ty }
+    b.x = Math.max(b.w / 2 + 4, Math.min(W - b.w / 2 - 4, b.x)); b.y = Math.max(14, Math.min(H - 22, b.y))
+    const hl = i.id === selId, rad = (n ? 8 : 4.5 + (1 - far) * 2) * (hl ? 1.3 : 1)
+    ctx.beginPath(); ctx.arc(b.x, b.y, rad, 0, 6.3); const g = ctx.createRadialGradient(b.x - rad * .3, b.y - rad * .3, 1, b.x, b.y, rad); g.addColorStop(0, '#fff'); g.addColorStop(.35, r.color); g.addColorStop(1, r.color + '66')
+    ctx.globalAlpha = n ? 1 : .8 - far * .3; ctx.fillStyle = g; ctx.fill(); ctx.globalAlpha = 1
+    if (n || hl) { ctx.font = '600 10px Inter, system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgba(7,22,29,.9)'; ctx.strokeText(i.short, b.x, b.y + rad + 11); ctx.fillStyle = hl ? '#fff' : '#d9f3ee'; ctx.fillText(i.short, b.x, b.y + rad + 11) }
+  }
+  fx = fx.filter((f) => (f.t += .025) < 1); for (const f of fx) { ctx.beginPath(); ctx.arc(f.x, f.y - f.t * 20, 6 + f.t * 26, 0, 6.3); ctx.strokeStyle = f.c; ctx.globalAlpha = 1 - f.t; ctx.lineWidth = 2; ctx.stroke(); ctx.globalAlpha = 1 }
+}
+requestAnimationFrame(frame)
+cv.addEventListener('pointerdown', (e) => {
+  const rc = cv.getBoundingClientRect(), x = e.clientX - rc.left, y = e.clientY - rc.top; let best = null, d = 26
+  for (const b of bubbles) { const k = Math.hypot(b.x - x, b.y - y); if (k < d) { d = k; best = b } }
+  selId = best ? best.item.id : null; if (!best) return
+  tab = eff(best.item) >= 2 ? 'future' : 'plan'; render()
+  const el = document.querySelector(`[data-id="${selId}"]`); if (el) { el.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' }); el.classList.add('hl'); setTimeout(() => el.classList.remove('hl'), 1400) }
+})
+
+// ---------- dumping ----------
+const filler = new Set('a an the to for of and or with at on in my me i we need needs have has must should remember dont forget please tomorrow today tonight urgent asap now get do make send is are was be it this that some about before after by up out from really just also then wants want'.split(' '))
+function shorten(text) { const w = text.replace(/\bin \d+ (day|week|month)s?\b/ig, '').replace(/[^\w' -]/g, ' ').split(/\s+/).filter((x) => x && !filler.has(x.toLowerCase())); const o = w.slice(0, 2).join(' ') || text.slice(0, 14); return o.charAt(0).toUpperCase() + o.slice(1) }
+function drop(text) {
+  const made = []
+  for (const p of text.split(/[.\n;]+/).map((x) => x.trim()).filter(Boolean)) {
+    const r = reefs.find((x) => x.kw.test(p)) || reef('Loose'); let due = 7; const m = p.match(/in (\d+) (day|week|month)s?/i)
+    if (m) due = +m[1] * ({ day: 1, week: 7, month: 30 })[m[2].toLowerCase()]; else if (/today|tonight|asap|now/i.test(p)) due = 0; else if (/tomorrow|tmrw|urgent/i.test(p)) due = 1; else if (r.name === 'Work') due = 3
+    const it = { id: uid++, reef: r.name, short: shorten(p), text: p, due, urgent: /urgent|asap/i.test(p), done: false }; items.push(it); made.push(it)
+  }
+  if (!made.length) return; sync(); toast(`Filed ${made.length}: ` + made.map((i) => `${i.short} → ${isToday(i) ? 'Today' : isTomorrow(i) ? 'Tomorrow' : 'Future'}`).join(', '))
+}
+$('f').addEventListener('submit', (e) => { e.preventDefault(); const v = $('in').value; if (v.trim()) { drop(v); $('in').value = '' } })
+$('mic').addEventListener('click', () => { $('in').value = 'Call the dentist tomorrow. Sam wants a dinosaur cake in 10 days. Urgent: change Friday lunch, the kids have pasta again.'; toast('Sample of what you might say. Press Enter to file it.'); $('in').focus() })
+render()
+</script>
+</body>
+</html>

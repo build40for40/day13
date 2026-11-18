@@ -1,0 +1,15 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "parker",
+  "account_id": "9b4d3e616e55585a0ae844f424717b43",
+  "compatibility_date": "2026-11-04",
+  // Static assets only. `pnpm build` writes dist/parker, so the files sit at the same path as the URL.
+  "assets": { "directory": "./dist" },
+  "routes": [
+    // One wildcard rather than "/parker" and "/parker/*": an exact route misses "/parker?utm_source=…".
+    { "pattern": "build40for40.com/parker*", "zone_name": "build40for40.com" }
+  ],
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": { "enabled": true }
+}
