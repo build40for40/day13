@@ -2,8 +2,7 @@ import { env } from "cloudflare:workers";
 import { McpServer } from "@modelcontextprotocol/server";
 import { createMcpHandler, getMcpAuthContext } from "agents/mcp/server";
 import { z } from "zod";
-import type { UserBrain } from "../brain";
-import type { ContextSources } from "../prompt";
+import type { Brief, UserBrain } from "../brain";
 import type { Rpc } from "../types";
 import { CAPTURE_TOOL, OPEN_BRAIN_TOOL, RECALL_TOOL, SERVER_INSTRUCTIONS, openBrainText } from "@day13/instructions";
 
@@ -82,9 +81,10 @@ export function renderCapture({ text: said, context, answer }: { text: string; c
   return [said, context && `(Context: ${context})`, answer && `(The AI they asked answered: ${answer})`].filter(Boolean).join("\n");
 }
 
-/** What a voice session would start from: who they are, what's been learned and how their notes are filed. */
-export function renderBrief({ user, memory, sessionNotes, topics, recent, time, today }: ContextSources): string {
+/** What they've captured that isn't filed yet, then what a voice session would start from. */
+export function renderBrief({ user, memory, sessionNotes, topics, recent, unfiled, time, today }: Brief): string {
   return [
+    section("Captured lately, not filed yet", unfiled.length ? unfiled.map((turn) => `- ${turn.text.replaceAll("\n", " ")}`).join("\n") : "Nothing waiting."),
     section("About them (USER.md)", [`Preferences: ${JSON.stringify(user.preferences)}`, user.about.trim()].filter(Boolean).join("\n\n")),
     section("How to help them (MEMORY.md)", memory?.trim() || "Nothing yet."),
     section("Their last conversations, newest first", sessionNotes.length ? sessionNotes.map(({ path, body }) => `## ${path}\n${cut(body.trim(), MAX_SESSION_NOTE_CHARS)}`).join("\n\n") : "None yet."),

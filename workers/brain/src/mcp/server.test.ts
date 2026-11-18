@@ -42,12 +42,17 @@ describe("the MCP tools", () => {
     const turns = await runInDurableObject(brainFor(sub), (_: UserBrain, state) => state.storage.sql.exec<{ turns: string }>("SELECT turns FROM sessions WHERE ended_at IS NULL").toArray());
     expect(turns.map((row) => JSON.parse(row.turns).map((t: { text: string }) => t.text))).toEqual([["Build a fake shed cinema", "How long does it take to dry?\n(Context: fake shed paint)\n(The AI they asked answered: About two fake hours.)"]]);
 
+    expect(toolText(await callTool(token, "open_brain"))).toContain("- Build a fake shed cinema");
+    expect(toolText(await callTool(token, "recall", { query: "paint dry" }))).toContain("About two fake hours.");
+    expect(toolText(await callTool(await signInToMcp(fakeUser(), workos), "recall", { query: "shed cinema" }))).toBe("Nothing in your notes matches that.");
+
     const quiet = new Date(Date.now() - (IDLE_MINUTES + 1) * 60_000).toISOString();
     await runInDurableObject(brainFor(sub), (_: UserBrain, state) => state.storage.sql.exec("UPDATE sessions SET last_message_at = ?", quiet));
     const reflection = mockClaude({ content: [{ type: "text", text: JSON.stringify(fakeReflection) }] });
     await runDurableObjectAlarm(brainFor(sub));
     expect(reflection.requests[0].messages[0].content).toContain("User: Build a fake shed cinema");
     expect(toolText(await callTool(token, "recall", { query: "shed cinema" }))).toContain("Turn the fake shed into a tiny cinema.");
+    expect(toolText(await callTool(token, "open_brain"))).toContain("Nothing waiting.");
   });
 
   it("only recalls from the signed-in person's brain", async () => {

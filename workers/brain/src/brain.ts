@@ -29,6 +29,12 @@ const CAPTURE_SESSION = "capture_session";
 const SSE_HEADERS = { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform" };
 export const TURN_FAILED = "Sorry, I lost the thread there. Could you say that again?";
 
+/** What `open_brain` starts from: a voice session's sources, plus captures still waiting to be filed. */
+export type Brief = ContextSources & { unfiled: Capture[] };
+interface Capture {
+  at: string;
+  text: string;
+}
 export type EndReason = "ended" | "replaced" | "idle" | "turn_cap" | "midnight";
 export type ReflectionStatus = "not_ended" | "pending" | "done" | "failed";
 
@@ -295,16 +301,17 @@ export class UserBrain extends DurableObject<Env> {
   }
 
   /** What a voice session starts from, for clients that open the brain another way. */
-  getBrief(): ContextSources {
+  getBrief(): Brief {
     this.init();
-    return this.contextSources(new Date().toISOString());
+    return { ...this.contextSources(new Date().toISOString()), unfiled: this.unfiledCaptures() };
   }
 
   /** What the `recall` tool answers with: the best matches from this person's notes and the shared reference notes. */
   recall(query: string): string {
     this.init();
     const vault = this.sql.exec<SearchableNote & Record<string, SqlStorageValue>>("SELECT path, body FROM files ORDER BY path").toArray();
-    return renderRecall(search([...vault, ...REFERENCE], query));
+    const unfiled = this.unfiledCaptures().map(({ at, text }) => ({ path: `Not filed yet, captured at ${londonTime(at)} on ${londonDay(at)}`, body: text }));
+    return renderRecall(search([...unfiled, ...vault, ...REFERENCE], query));
   }
 
   // The alarm
@@ -336,6 +343,11 @@ export class UserBrain extends DurableObject<Env> {
     const id = this.setting(CAPTURE_SESSION);
     const row = id ? this.getSessionRow(id) : undefined;
     return row && !row.ended_at ? row : undefined;
+  }
+
+  private unfiledCaptures(): Capture[] {
+    const rows = this.sql.exec<{ turns: string }>("SELECT turns FROM sessions WHERE model = 'capture' AND reflected_at IS NULL ORDER BY started_at").toArray();
+    return rows.flatMap((row) => JSON.parse(row.turns) as Turn[]).flatMap(({ at, text }) => (text ? [{ at, text }] : []));
   }
 
   private openSessions(): SessionRow[] {
