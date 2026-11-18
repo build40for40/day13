@@ -1,0 +1,25 @@
+{
+  "name": "@day13/brain",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The day 13 brain: a Worker in front of one UserBrain Durable Object per person, which files what they dump into it.",
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm wrangler dev",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "types": "wrangler types --env-interface Env --strict-vars false",
+    "wrangler": "env -u CLOUDFLARE_API_KEY -u CLOUDFLARE_EMAIL wrangler --profile 40for40"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.4.0",
+    "@cfworker/json-schema": "^4.1.6",
+    "jose": "^6.2.15"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.6.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0",
+    "wrangler": "^4.158.0"
+  }
+}
