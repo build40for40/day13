@@ -36,3 +36,31 @@ test('returns only a non-cacheable signed URL to the verified account', async ()
   expect(await response.json()).toEqual({ signed_url: signedUrl })
   expect(issuer.mock.calls[0][1].headers).toEqual({ 'xi-api-key': 'fictional-key' })
 })
+
+const pkce = 'a'.repeat(43)
+
+test('sends sign-in to WorkOS with the PKCE challenge and the page as the redirect', async () => {
+  const start = `https://example.com/dumpling/api/sign-in?state=${pkce}&code_challenge=${pkce}`
+  const response = await worker.fetch(new Request(start), env())
+  expect(response.status).toBe(302)
+  const location = new URL(response.headers.get('Location'))
+  expect(location.origin + location.pathname).toBe('https://api.workos.com/user_management/authorize')
+  expect(location.searchParams.get('redirect_uri')).toBe('https://example.com/dumpling/')
+  expect(location.searchParams.get('code_challenge')).toBe(pkce)
+  expect(location.searchParams.get('state')).toBe(pkce)
+  expect((await worker.fetch(new Request(start.replace(pkce, 'short')), env())).status).toBe(400)
+})
+
+test('trades the sign-in code for an access token only for the brain owner', async () => {
+  const exchange = vi.fn(async () => Response.json({ access_token: 'fixture-token', refresh_token: 'ignored' }))
+  vi.stubGlobal('fetch', exchange)
+  const token = (body) => new Request('https://example.com/dumpling/api/sign-in/token', { method: 'POST', body: JSON.stringify(body) })
+  const body = { code: 'fixture-code', code_verifier: pkce }
+
+  const response = await worker.fetch(token(body), env())
+  expect(await response.json()).toEqual({ access_token: 'fixture-token' })
+  expect(Object.fromEntries(new URLSearchParams(exchange.mock.calls[0][1].body))).toMatchObject({ grant_type: 'authorization_code', ...body })
+
+  expect((await worker.fetch(token(body), env('user_other'))).status).toBe(403)
+  expect((await worker.fetch(token({ code: 'fixture-code' }), env())).status).toBe(400)
+})

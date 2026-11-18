@@ -25,7 +25,7 @@ Not wired yet: a proper WorkOS sign-in (a pasted token is the only way in). Depl
 
 ## Private in-page voice demo
 
-The mic uses the ElevenLabs browser SDK to connect to the existing private Dumpling agent. WorkOS device sign-in starts from the page and the access token stays in browser memory. The web Worker verifies the token with the brain Worker and checks the signed-in user ID before issuing a signed ElevenLabs URL. The current agent adapter is bound to a single vault.
+The mic uses the ElevenLabs browser SDK to connect to the existing private Dumpling agent. Sign in with WorkOS sends the page to AuthKit and back to `/dumpling/` with a code, which the web Worker trades for an access token using PKCE, so there's no client secret. That needs `https://build40for40.com/dumpling/` as a redirect URI on the WorkOS app. The access token stays in this tab's session storage. The web Worker verifies the token with the brain Worker and checks the signed-in user ID before issuing a signed ElevenLabs URL. The current agent adapter is bound to a single vault.
 
 Set these secrets on the `dumpling` Cloudflare Worker before enabling the demo:
 
