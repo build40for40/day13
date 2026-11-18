@@ -112,6 +112,9 @@ async function toggleVoice() {
     active = await Conversation.startSession({
       signedUrl: data.signed_url,
       connectionType: 'websocket',
+      onMessage({ source, message }) {
+        if (source === 'user') window.dispatchEvent(new CustomEvent('dumpling:transcript', { detail: message }))
+      },
       onDisconnect() {
         active = undefined
         setCallState(false)

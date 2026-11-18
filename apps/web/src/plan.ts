@@ -23,11 +23,12 @@ export type Item = {
 const REEFS: [string, RegExp][] = [
   ['Meals', /pasta|dinner|meal|menu|recipe|rice|cook|lunch|snack|soup|cake|groceries|shopping/i],
   ['School', /costume|school|teacher|permission|museum|homework|concert/i],
+  ['Home', /home|house|clean|laundry|dentist|doctor|family|garden|repair|washing/i],
   ['Gifts', /gift|birthday|present|toy|puzzle/i],
   ['Bali trip', /bali|villa|flight|passport|hotel|visa|ubud|holiday|trip/i],
 ]
 
-/** Which colour an item gets: by what it's about, falling back to its area. */
+/** Which category and shape an item gets: by topic, falling back to its area. */
 export function reefFor(title: string, fields: NoteFields): string {
   const text = `${title} ${(fields.topics ?? []).join(' ')}`
   for (const [name, re] of REEFS) if (re.test(text)) return name
