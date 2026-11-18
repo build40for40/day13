@@ -4,6 +4,7 @@ import { createMcpHandler, getMcpAuthContext } from "agents/mcp/server";
 import { z } from "zod";
 import type { Brief, UserBrain } from "../brain";
 import { registerItemActions } from "../item-actions";
+import { agendaSections } from "../items";
 export { NO_SUCH_TASK, NO_SUCH_EVENT, NO_SUCH_NOTE, NOTHING_TO_CHANGE } from "../item-actions";
 import { renderTopic } from "../prompt";
 import type { Rpc } from "../types";
@@ -76,10 +77,13 @@ export function createBrainServer(): McpServer {
     {
       title: RECALL_TOOL.title,
       description: RECALL_TOOL.description,
-      inputSchema: z.object({ query: z.string().trim().min(1).max(MAX_QUERY_CHARS).describe(RECALL_TOOL.inputSchema.properties.query.description) }),
+      inputSchema: z.object({
+        query: z.string().trim().min(1).max(MAX_QUERY_CHARS).describe(RECALL_TOOL.inputSchema.properties.query!.description),
+        area: z.enum(["work", "personal"]).optional().describe(RECALL_TOOL.inputSchema.properties.area!.description),
+      }),
       annotations: RECALL_TOOL.annotations,
     },
-    async ({ query }) => text(await signedInBrain().recall(query)),
+    async ({ query, area }) => text(await signedInBrain().recall(query, undefined, area)),
   );
 
   registerItemActions(signedInBrain, (tool, schema, run) => {
@@ -101,13 +105,14 @@ export function renderCapture({ text: said, context, answer }: { text: string; c
 }
 
 /** What they've said that isn't filed yet, then what a voice session would start from. */
-export function renderBrief({ user, memory, sessionNotes, topics, recent, unfiled, time, today }: Brief): string {
+export function renderBrief({ user, memory, sessionNotes, topics, agenda, recent, unfiled, time, today }: Brief): string {
   return [
     section("Said lately, not filed yet", unfiled.length ? unfiled.map((turn) => `- ${turn.text.replaceAll("\n", " ")}`).join("\n") : "Nothing waiting."),
     section("About them (USER.md)", [`Preferences: ${JSON.stringify(user.preferences)}`, user.about.trim()].filter(Boolean).join("\n\n")),
     section("How to help them (MEMORY.md)", memory?.trim() || "Nothing yet."),
     section("Their last conversations, newest first", sessionNotes.length ? sessionNotes.map(({ path, body }) => `## ${path}\n${cut(body.trim(), MAX_SESSION_NOTE_CHARS)}`).join("\n\n") : "None yet."),
     section("Topics their notes are filed under", topics.length ? topics.map(renderTopic).join("\n") : "None yet."),
+    ...agendaSections(agenda).map(({ title, body }) => section(title, body)),
     section("Newest filed items", recent.length ? recent.map((r) => `- ${r.path}: ${r.title}`).join("\n") : "None yet."),
     section("Now", `It's ${time} on ${today}, UK time.`),
   ].join("\n\n");

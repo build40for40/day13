@@ -1,9 +1,10 @@
 import { DurableObject } from "cloudflare:workers";
 import type Anthropic from "@anthropic-ai/sdk";
 import { createClient, liveModel } from "./claude";
-import { consolidate, needsConsolidation } from "./consolidation";
+import { consolidate, needsConsolidation, type VaultState } from "./consolidation";
 import { itemActionRunner } from "./item-actions";
 import { error } from "./http";
+import { agenda } from "./items";
 import { USER_MD, type JsonValue, type Preferences, type Profile, type ProfilePatch, type PublicProfile } from "./profile";
 import { assembleContext, MAX_RECENT_ITEMS, MAX_SESSION_NOTES, MAX_TOPICS, OPENING_LINE, type ContextSources, type Note } from "./prompt";
 import { renderRecall, search, type SearchableNote } from "./recall";
@@ -14,7 +15,7 @@ import { migrate } from "./schema";
 import { starterAbout, starterPreferences } from "./seed";
 import { appendUserText, runTurn } from "./turn";
 import type { StreamEvent, ToolCall, Turn } from "./types";
-import { filedBy, londonDate, londonDay, londonTime, MEMORY_MD, nextLondonMidnight, fieldsLine, noteTitle, readFile, readLearned, replaceAbout, restoreVersion, splitLearned, summaryOf, versionsOf, withFieldsLine, writeAddedItem, writeConsolidation, writeFile, writeReflection, type NoteKind, type NoteVersion } from "./vault";
+import { filedBy, londonDate, londonDay, londonTime, MEMORY_MD, nextLondonMidnight, fieldsLine, noteTitle, readFile, readLearned, replaceAbout, restoreVersion, splitLearned, summaryOf, versionsOf, withFieldsLine, writeAddedItem, writeConsolidation, writeTidying, writeFile, writeReflection, type NoteKind, type NoteVersion } from "./vault";
 
 /** A voice session ends when the person has been quiet this long, in case the client never says it's done. */
 export const IDLE_MINUTES = 30;
@@ -28,6 +29,9 @@ const REFLECTION_TIMEOUT_MS = 10 * 60_000;
 const ITEM_KINDS_SQL = "('idea', 'question', 'task', 'event', 'note', 'thought')";
 /** How many open to-dos and events a reflection is shown, so it doesn't file one twice. */
 const MAX_EXISTING_ITEMS = 40;
+/** How many topics and topicless items one consolidation looks at. */
+const MAX_TIDIED_TOPICS = 100;
+const MAX_TIDIED_ITEMS = 30;
 
 const SSE_HEADERS = { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform" };
 export const TURN_FAILED = "Sorry, I lost the thread there. Could you say that again?";
@@ -420,9 +424,13 @@ export class UserBrain extends DurableObject<Env> {
    * What the `recall` tool answers with: the best matches from this person's notes, what they've said that isn't filed yet and the
    * shared reference notes. A voice session passes its own source as `except`, since it already has what was said in it.
    */
-  recall(query: string, except?: string): string {
+  recall(query: string, except?: string, area?: Area): string {
     this.init();
-    const vault = this.sql.exec<SearchableNote & Record<string, SqlStorageValue>>("SELECT path, body FROM files ORDER BY path").toArray();
+    const other = area === "work" ? "personal" : "work";
+    const vault = this.sql
+      .exec<SearchableNote & { area: string | null } & Record<string, SqlStorageValue>>("SELECT path, body, json_extract(frontmatter, '$.area') AS area FROM files ORDER BY path")
+      .toArray()
+      .filter((note) => !area || note.area !== other);
     const unfiled = this.unfiledCaptures(except).map(({ at, text }) => ({ path: `Not filed yet, said at ${londonTime(at)} on ${londonDay(at)}`, body: text }));
     return renderRecall(search([...unfiled, ...vault, ...REFERENCE], query));
   }
@@ -517,6 +525,7 @@ export class UserBrain extends DurableObject<Env> {
       memory: readFile(this.sql, MEMORY_MD)?.body ?? null,
       sessionNotes: sessionNotes as Note[],
       topics: topics.map(({ path, items, area, body }) => ({ path, items, ...(area ? { area } : {}), ...(summaryOf(body) ? { summary: summaryOf(body) } : {}) })),
+      agenda: agenda(this.listNotes("task"), this.listNotes("event"), londonDate(at)),
       recent: recent.map((row) => ({ path: row.path, title: noteTitle(row.path, row.body) })),
       reference: REFERENCE.map((note) => note.path),
       time: londonTime(at),
@@ -608,16 +617,43 @@ export class UserBrain extends DurableObject<Env> {
     if (!this.env.ANTHROPIC_API_KEY) return;
     const since = this.setting("consolidated_at") ?? "";
     const before = readLearned(this.sql);
-    if (!needsConsolidation(before, settledSince(this.sql, since))) return;
+    const vault = this.vaultState();
+    if (!needsConsolidation(before, settledSince(this.sql, since), vault)) return;
     const started = Date.now();
     this.saveSetting("consolidated_at", new Date().toISOString());
     try {
-      const { learned, usage } = await consolidate(createClient(this.env.ANTHROPIC_API_KEY, REFLECTION_TIMEOUT_MS), before);
-      this.ctx.storage.transactionSync(() => writeConsolidation(this.sql, learned, new Date().toISOString()));
-      console.log(JSON.stringify({ event: "brain_consolidation", facts: [before.facts.length, learned.facts.length], lessons: [before.lessons.length, learned.lessons.length], total_ms: Date.now() - started, usage }));
+      const { learned, tidying, usage } = await consolidate(createClient(this.env.ANTHROPIC_API_KEY, REFLECTION_TIMEOUT_MS), before, vault);
+      this.ctx.storage.transactionSync(() => {
+        const now = new Date().toISOString();
+        writeConsolidation(this.sql, learned, now);
+        writeTidying(this.sql, tidying, now);
+      });
+      console.log(JSON.stringify({ event: "brain_consolidation", facts: [before.facts.length, learned.facts.length], lessons: [before.lessons.length, learned.lessons.length], topics_merged: tidying.topic_merges.length, items_filed: tidying.topic_filings.length, total_ms: Date.now() - started, usage }));
     } catch (e) {
       console.error(JSON.stringify({ event: "brain_consolidation_failed", error: String(e) }));
     }
+  }
+
+  /** The topics and the items under no topic, for a consolidation to tidy. Items in a batch still being filed are left to it. */
+  private vaultState(): VaultState {
+    const topics = this.sql
+      .exec<{ topic: string | null; body: string; items: number }>(
+        `SELECT json_extract(f.frontmatter, '$.topic') AS topic, f.body, (SELECT COUNT(*) FROM links l WHERE l.src = f.path AND l.kind IN ${ITEM_KINDS_SQL}) AS items
+         FROM files f WHERE f.kind = 'topic' ORDER BY f.path LIMIT ?`,
+        MAX_TIDIED_TOPICS,
+      )
+      .toArray();
+    const untopiced = this.sql
+      .exec<FileRow>(
+        `SELECT * FROM files WHERE kind IN ${ITEM_KINDS_SQL} AND json_array_length(COALESCE(json_extract(frontmatter, '$.topics'), '[]')) = 0
+         AND json_extract(frontmatter, '$.added_by') IS NOT NULL ORDER BY updated_at DESC, path LIMIT ?`,
+        MAX_TIDIED_ITEMS,
+      )
+      .toArray();
+    return {
+      topics: topics.flatMap((t) => (t.topic ? [{ name: t.topic, items: t.items, summary: summaryOf(t.body) }] : [])),
+      untopiced: untopiced.map((row) => ({ path: row.path, title: noteTitle(row.path, row.body) })),
+    };
   }
 
   // Storage helpers

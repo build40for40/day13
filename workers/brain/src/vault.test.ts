@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { UserBrain } from "./brain";
 import type { Reflection } from "./reflection";
 import { noTaskFields } from "./testing";
-import { addLines, editSection, filedBy, noteTitle, slugify, topicPath, londonDate, londonDay, MAX_VERSIONS_PER_NOTE, nextLondonMidnight, readLearned, rebuildLinks, replaceAbout, replaceSessionLines, restoreVersion, sessionNotePath, splitLearned, versionsOf, writeConsolidation, writeFile, writeReflection, type ReflectedSession, withFieldsLine, withSummary, mergeArea } from "./vault";
+import { addLines, editSection, filedBy, noteTitle, slugify, topicPath, londonDate, londonDay, MAX_VERSIONS_PER_NOTE, nextLondonMidnight, readLearned, rebuildLinks, replaceAbout, replaceSessionLines, restoreVersion, sessionNotePath, splitLearned, versionsOf, writeConsolidation, writeFile, writeReflection, writeTidying, writeAddedItem, type ReflectedSession, withFieldsLine, withSummary, mergeArea } from "./vault";
 
 const reflection: Reflection = { items: [], summary: "Asked about fake things.", facts: ["Prefers short answers"], lessons: [] };
 
@@ -340,5 +340,44 @@ describe("topic and person pages", () => {
     expect(mergeArea("work", ["work"])).toBe("work");
     expect(mergeArea("work", ["personal"])).toBe("mixed");
     expect(mergeArea("mixed", ["work"])).toBe("mixed");
+  });
+});
+
+describe("writeTidying", () => {
+  const item = (overrides: Partial<Reflection["items"][number]>) => ({ kind: "idea" as const, title: "Fake idea", detail: "A fake detail.", answer: "", ...noTaskFields, topics: ["garden"], ...overrides });
+
+  it("folds one topic into another and files an item that had no topic, keeping a version of everything it changed", async () => {
+    await inVault("vault_tidying", (sql) => {
+      const filed: Reflection = {
+        summary: "Fake.",
+        items: [item({ title: "Raised fake beds", topics: ["gardening", "weekend"], area: "work" }), item({ title: "Paint the fake shed" })],
+        pages: [{ kind: "topic", name: "gardening", summary: "Thinking about raised beds.", project: false }],
+        facts: [],
+        lessons: [],
+      };
+      writeReflection(sql, session({ reflection: filed }), "2026-11-10T18:30:00Z");
+      const added = writeAddedItem(sql, { ...item({ kind: "task", title: "Book the fake MOT", topics: [], detail: "" }) }, "2026-11-11T09:00:00Z", "mcp");
+
+      writeTidying(sql, { topic_merges: [{ from: "gardening", into: "garden" }], topic_filings: [{ path: added, topics: ["car"] }] }, "2026-11-12T09:00:00Z");
+
+      const beds = "ideas/2026-11-10-raised-fake-beds";
+      expect(files(sql).map((f) => f.path)).not.toContain("topics/gardening.md");
+      expect(versionsOf(sql, "topics/gardening.md")[0]).toMatchObject({ operation: "deleted", actor: "consolidation" });
+      expect(body(sql, `${beds}.md`)).toContain("Filed under [[topics/garden|garden]], [[topics/weekend|weekend]]. From [[sessions/2026-11-10-aaaaaaaa]].");
+      expect(JSON.parse(files(sql).find((f) => f.path === `${beds}.md`)!.frontmatter).topics).toEqual(["garden", "weekend"]);
+      const garden = files(sql).find((f) => f.path === "topics/garden.md")!;
+      expect(garden.body).toContain("## Summary\n\nThinking about raised beds.\n\n## Filed");
+      expect(garden.body).toContain(`- [[${beds}|Raised fake beds]] ([[sessions/2026-11-10-aaaaaaaa]])`);
+      expect(garden.body).toContain("Paint the fake shed");
+      expect(JSON.parse(garden.frontmatter).area).toBe("mixed");
+      expect(links(sql)).toContainEqual({ src: "topics/garden.md", dst: `${beds}.md`, kind: "idea" });
+
+      expect(body(sql, added)).toBe("# Book the fake MOT\n\nFiled under [[topics/car|car]].\n");
+      expect(body(sql, "topics/car.md")).toBe(`# car\n\n## Filed\n\n- [[${added.replace(/\.md$/, "")}|Book the fake MOT]]\n`);
+
+      writeTidying(sql, { topic_merges: [{ from: "gardening", into: "garden" }], topic_filings: [{ path: added, topics: ["somewhere else"] }] }, "2026-11-13T09:00:00Z");
+      expect(body(sql, added)).toContain("[[topics/car|car]]");
+      expect(files(sql).map((f) => f.path)).not.toContain("topics/somewhere-else.md");
+    });
   });
 });

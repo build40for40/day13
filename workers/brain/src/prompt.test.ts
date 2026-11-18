@@ -17,6 +17,7 @@ describe("assembleContext", () => {
     memory: null,
     sessionNotes: [],
     topics: [],
+    agenda: { due: [], coming: [], quiet: [] },
     recent: [],
     reference: ["reference/how-filing-works.md"],
     time: "14:05",

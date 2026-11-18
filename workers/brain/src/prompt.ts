@@ -1,3 +1,4 @@
+import { agendaSections, type Agenda } from "./items";
 import type { Preferences } from "./profile";
 
 export const MAX_SESSION_NOTES = 5;
@@ -39,6 +40,8 @@ export interface ContextSources {
   sessionNotes: Note[];
   /** Topic notes and how many items each holds, biggest first, with where each stands when it has a summary. */
   topics: TopicSource[];
+  /** What's due, coming up and gone quiet. */
+  agenda: Agenda;
   /** The newest filed items, newest first. */
   recent: { path: string; title: string }[];
   /** The paths of the reference notes `recall` can look up. */
@@ -92,12 +95,13 @@ export const LIVE_PROMPT = `You are a voice assistant people dump their thoughts
 Below is what you know about this person: their profile (USER.md), lessons you've kept about helping them (MEMORY.md), your notes on your last few conversations, and how their notes are filed so far. Use it naturally, like someone who remembers, without reciting it.`;
 
 /** Everything Claude knows going into a session. Built once and stored on the session, so every turn sends the same bytes and the prompt cache holds. */
-export function assembleContext({ user, memory, sessionNotes, topics, recent, reference, time, today }: ContextSources): string {
+export function assembleContext({ user, memory, sessionNotes, topics, agenda, recent, reference, time, today }: ContextSources): string {
   const sections = [
     section("USER.md", [`Preferences: ${JSON.stringify(user.preferences)}`, user.about.trim()].filter(Boolean).join("\n\n")),
     section("MEMORY.md", memory?.trim() || "Nothing yet."),
     section("Your last conversations, newest first", sessionNotes.length ? sessionNotes.map(renderNote).join("\n\n") : "None yet: this is the first time you've talked."),
     section("Topics their notes are filed under", topics.length ? topics.map(renderTopic).join("\n") : "None yet."),
+    ...agendaSections(agenda).map(({ title, body }) => section(title, body)),
     section("Newest filed items", recent.length ? recent.map((r) => `- ${r.path}: ${r.title}`).join("\n") : "None yet."),
     section("Reference notes recall can look up", reference.length ? reference.map((path) => `- ${path}`).join("\n") : "None."),
     section("This conversation", `It started at ${time} on ${today}, UK time. You opened with "${OPENING_LINE}"`),
