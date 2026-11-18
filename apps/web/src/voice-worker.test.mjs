@@ -51,7 +51,7 @@ test('sends sign-in to WorkOS with the PKCE challenge and the page as the redire
   expect((await worker.fetch(new Request(start.replace(pkce, 'short')), env())).status).toBe(400)
 })
 
-test('trades the sign-in code for an access token only for the brain owner', async () => {
+test('trades the sign-in code for an access token for any account', async () => {
   const exchange = vi.fn(async () => Response.json({ access_token: 'fixture-token', refresh_token: 'ignored' }))
   vi.stubGlobal('fetch', exchange)
   const token = (body) => new Request('https://example.com/dumpling/api/sign-in/token', { method: 'POST', body: JSON.stringify(body) })
@@ -61,6 +61,6 @@ test('trades the sign-in code for an access token only for the brain owner', asy
   expect(await response.json()).toEqual({ access_token: 'fixture-token' })
   expect(Object.fromEntries(new URLSearchParams(exchange.mock.calls[0][1].body))).toMatchObject({ grant_type: 'authorization_code', ...body })
 
-  expect((await worker.fetch(token(body), env('user_other'))).status).toBe(403)
+  expect((await worker.fetch(token(body), env('user_other'))).status).toBe(200)
   expect((await worker.fetch(token({ code: 'fixture-code' }), env())).status).toBe(400)
 })
