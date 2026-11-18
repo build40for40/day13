@@ -43,10 +43,11 @@ describe("assembleContext", () => {
       topics: [
         { path: "topics/garden.md", items: 3 },
         { path: "topics/work.md", items: 1 },
+        { path: "topics/fake-trip.md", items: 2, area: "mixed", summary: `Flights are booked. ${"x".repeat(300)}` },
       ],
       recent: [{ path: "ideas/2026-11-18-a-fake-shed-cinema.md", title: "A fake shed cinema" }],
     });
-    expect(context).toContain("# Topics their notes are filed under\n\n- topics/garden.md (3 items)\n- topics/work.md (1 item)");
+    expect(context).toContain(`# Topics their notes are filed under\n\n- topics/garden.md (3 items)\n- topics/work.md (1 item)\n- topics/fake-trip.md (2 items, mixed): Flights are booked. ${"x".repeat(220)}…`);
     expect(context).toContain("# Newest filed items\n\n- ideas/2026-11-18-a-fake-shed-cinema.md: A fake shed cinema");
   });
 

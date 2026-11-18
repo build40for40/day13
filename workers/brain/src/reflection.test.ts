@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import Anthropic from "@anthropic-ai/sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createClient } from "./claude";
-import { isRetryable, reflect, ReflectionError, reflectionRequest, renderTranscript, tidyItems, type ReflectionInput } from "./reflection";
+import { isRetryable, reflect, ReflectionError, reflectionRequest, renderTranscript, tidyItems, type ReflectionInput, renderInput } from "./reflection";
 import { fakeReflection, mockClaude, noTaskFields } from "./testing";
 import type { Turn } from "./types";
 
@@ -52,9 +52,16 @@ describe("reflect", () => {
         { kind: "idea", title: "A fake shed cinema", detail: "Turn the fake shed into a tiny cinema.", answer: "", topics: ["garden", "weekend projects"], ...noTaskFields },
         { kind: "question", title: "How long does fake paint take to dry?", detail: "Asked about drying times.", answer: "About four fake hours.", topics: ["garden"], ...noTaskFields },
       ],
+      pages: [{ kind: "topic", name: "garden", summary: "Planning to turn the fake shed into a cinema. Paint is next.", project: true }],
       facts: ["Has a fake shed"],
       lessons: ["Short answers land best"],
     });
+  });
+
+  it("shows each topic and person with the summary their page has so far", () => {
+    const content = renderInput({ ...input, topicSummaries: { garden: "The fake shed is half painted." }, people: [{ name: "Maya", summary: "Their fake sister." }, { name: "the kids", summary: "" }] });
+    expect(content).toContain("# Existing topics\n\n- garden: The fake shed is half painted.\n- work");
+    expect(content).toContain("# People who already have a page\n\n- Maya: Their fake sister.\n- the kids");
   });
 
   it("won't retry a refusal, output that isn't JSON or output off the schema", async () => {
