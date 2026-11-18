@@ -91,7 +91,7 @@ export interface NoteSummary {
   kind: NoteKind;
   title: string;
   updated_at: string;
-  /** The filing fields of a task or event: area, who, due, start, location, importance, status, inferred and topics. Only those that are set. */
+  /** The filing fields of a task or event: area, people, due, start, location, importance, status, inferred and topics. Only those that are set. */
   fields: Record<string, unknown>;
 }
 
@@ -545,7 +545,7 @@ function sessionView(row: SessionRow): SessionView {
   };
 }
 
-const FIELD_KEYS = ["area", "who", "due", "start", "location", "importance", "status", "completed_at", "inferred", "topics"];
+const FIELD_KEYS = ["area", "people", "due", "start", "location", "importance", "status", "completed_at", "inferred", "topics"];
 
 function noteSummary(row: FileRow): NoteSummary {
   const frontmatter = JSON.parse(row.frontmatter) as Record<string, unknown>;

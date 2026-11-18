@@ -55,11 +55,11 @@ const migrations: string[] = [
     value TEXT NOT NULL
   );
   `,
-  // Adds the 'event' kind. SQLite can't change a CHECK in place, so the table is rebuilt with its rows copied over.
+  // Lets new kinds like 'event' in. SQLite can't change a CHECK in place, so the table is rebuilt without one and its rows copied over.
   `
   CREATE TABLE files_next (
     path TEXT PRIMARY KEY,
-    kind TEXT NOT NULL CHECK (kind IN ('user', 'memory', 'session', 'idea', 'question', 'task', 'event', 'thought', 'topic')),
+    kind TEXT NOT NULL,
     frontmatter TEXT NOT NULL DEFAULT '{}',
     body TEXT NOT NULL DEFAULT '',
     updated_at TEXT NOT NULL

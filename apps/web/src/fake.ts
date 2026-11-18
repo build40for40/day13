@@ -4,10 +4,10 @@ import type { Brain, Note } from './brain'
 export const fakeNotes: Note[] = [
   { path: 'topics/gift-ideas.md', kind: 'topic', title: 'Gift ideas', updated_at: '2026-11-17T09:00:00Z', fields: {}, body: '## Filed\n- [[ideas/2026-11-02-puzzle-for-sam]]' },
   { path: 'ideas/2026-11-02-puzzle-for-sam.md', kind: 'idea', title: 'Puzzle for Sam', updated_at: '2026-11-17T09:00:00Z', fields: { area: 'personal' }, body: 'A 500 piece puzzle, something with trains.' },
-  { path: 'tasks/2026-11-17-pick-up-costume.md', kind: 'task', title: 'Pick up the costume', updated_at: '2026-11-17T09:00:00Z', fields: { area: 'personal', who: 'kids', due: '2026-11-19', importance: 'high', status: 'open', location: 'school', topics: ['school'] } },
+  { path: 'tasks/2026-11-17-pick-up-costume.md', kind: 'task', title: 'Pick up the costume', updated_at: '2026-11-17T09:00:00Z', fields: { area: 'personal', people: ['the kids'], due: '2026-11-19', importance: 'high', status: 'open', location: 'school', topics: ['school'] } },
   { path: 'tasks/2026-11-17-safety-summary.md', kind: 'task', title: 'Send the safety summary to Dad', updated_at: '2026-11-17T10:00:00Z', fields: { area: 'work', due: '2026-11-18', status: 'open', topics: ['work'] } },
   { path: 'tasks/2026-11-17-call-dentist.md', kind: 'task', title: 'Call the dentist', updated_at: '2026-11-17T11:00:00Z', fields: { area: 'personal', status: 'open', topics: ['health'] } },
-  { path: 'events/2026-11-17-school-concert.md', kind: 'event', title: 'School concert', updated_at: '2026-11-17T12:00:00Z', fields: { area: 'personal', who: 'kids', start: '2026-11-21T19:30', location: 'the school hall', status: 'open' } },
+  { path: 'events/2026-11-17-school-concert.md', kind: 'event', title: 'School concert', updated_at: '2026-11-17T12:00:00Z', fields: { area: 'personal', people: ['the kids'], start: '2026-11-21T19:30', location: 'the school hall', status: 'open' } },
   { path: 'questions/2026-11-03-pasta-swap.md', kind: 'question', title: 'What swaps for pasta night?', updated_at: '2026-11-03T09:00:00Z', fields: {}, body: 'Rice bowls, or baked potatoes.' },
 ]
 

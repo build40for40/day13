@@ -47,7 +47,7 @@ describe('toItem', () => {
   it('treats done and dropped as done, and maps who and importance', () => {
     expect(toItem(task('Fake', { status: 'done', completed_at: '2026-11-18T08:00:00Z' }), WED)).toMatchObject({ done: true, doneAt: Date.parse('2026-11-18T08:00:00Z') })
     expect(toItem(task('Fake', { status: 'dropped' }), WED)?.done).toBe(true)
-    expect(toItem(task('Fake', { who: 'kids', importance: 'high' }), WED)).toMatchObject({ who: 'Kids', urgent: true })
+    expect(toItem(task('Fake', { people: ['the kids'], importance: 'high' }), WED)).toMatchObject({ who: 'Kids', urgent: true })
   })
 })
 

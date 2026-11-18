@@ -37,7 +37,7 @@ Each item's note keeps these in its frontmatter, named after iCalendar and JSCal
 | Field | Meaning |
 | --- | --- |
 | `area` | `work` or `personal` |
-| `who` | `kids` or `grown-ups`, only when they said who it's for |
+| `people` | Who it's for or with, as first names or plain roles like `the kids`. Never a surname, and only when they said |
 | `due` | The day it's due, `YYYY-MM-DD`. Only a date they gave or clearly meant, worked out from the day the conversation started |
 | `start`, `location` | For an event: when (`YYYY-MM-DD` or `YYYY-MM-DDTHH:MM`, London time) and a place name, never an address |
 | `importance` | `low`, `normal` or `high`, when they said so or it clearly is |

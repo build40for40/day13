@@ -5,6 +5,7 @@ const KIND_BY_FOLDER: Record<string, string> = {
   ideas: "idea",
   questions: "question",
   tasks: "task",
+  events: "event",
   thoughts: "thought",
   topics: "topic",
 };

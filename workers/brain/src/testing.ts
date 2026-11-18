@@ -143,7 +143,7 @@ function apiError(type: string, message: string) {
 }
 
 /** The task fields of an item that has none of them set, for tests that only care about the rest. */
-export const noTaskFields: Pick<DumpItem, "area" | "who" | "due" | "start" | "location" | "importance" | "inferred"> = { area: "personal", who: "", due: "", start: "", location: "", importance: "", inferred: [] };
+export const noTaskFields: Pick<DumpItem, "area" | "people" | "due" | "start" | "location" | "importance" | "inferred"> = { area: "personal", people: [], due: "", start: "", location: "", importance: "", inferred: [] };
 
 /** A raw reflection as Opus might return it, untidy on purpose. */
 export const fakeReflection = {

@@ -20,9 +20,6 @@ export type ItemKind = (typeof ITEM_KINDS)[number];
 /** Which part of their life an item belongs to, so work and personal can be mixed and still told apart. */
 export const AREAS = ["work", "personal"] as const;
 export type Area = (typeof AREAS)[number];
-/** Who an item is for, when they said. Empty for everyone or no one in particular. */
-export const WHO = ["", "kids", "grown-ups"] as const;
-export type Who = (typeof WHO)[number];
 /** How much it matters, when they said or it clearly does. Empty when unknown. */
 export const IMPORTANCE = ["", "low", "normal", "high"] as const;
 export type Importance = (typeof IMPORTANCE)[number];
@@ -33,6 +30,8 @@ export type Inferable = (typeof INFERABLE)[number];
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const ISO_START = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/;
 const MAX_LOCATION = 80;
+const MAX_PEOPLE = 5;
+const MAX_PERSON = 30;
 
 /** One thing the person dumped, ready to be filed as its own note. */
 export interface DumpItem {
@@ -43,7 +42,8 @@ export interface DumpItem {
   answer: string;
   topics: string[];
   area: Area;
-  who: Who;
+  /** Who it's for or with, as first names or plain roles like "the kids". Empty when they named no one. */
+  people: string[];
   /** The day it's due, as YYYY-MM-DD, or empty. Only a date they gave or clearly meant. */
   due: string;
   /** For an event, when it starts: YYYY-MM-DD or YYYY-MM-DDTHH:MM, London time. Empty otherwise. */
@@ -93,7 +93,7 @@ export const reflectionSchema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["kind", "title", "detail", "answer", "topics", "area", "who", "due", "start", "location", "importance", "inferred"],
+        required: ["kind", "title", "detail", "answer", "topics", "area", "people", "due", "start", "location", "importance", "inferred"],
         properties: {
           kind: { type: "string", enum: [...ITEM_KINDS], description: "idea: something they might make or do. question: something they asked or wondered. task: something they need to do. event: something happening at a time or place they need to be at. thought: anything else worth keeping." },
           title: { type: "string", description: "A short title they'd recognise, under ten words." },
@@ -101,7 +101,7 @@ export const reflectionSchema = {
           answer: { type: "string", description: "For a question, the gist of the answer they were given in the conversation. Empty when there wasn't one, and for every other kind." },
           topics: { type: "array", items: { type: "string" }, description: "One to three short, lowercase topics to file it under, like garden or work. Reuse a topic from the list of existing ones whenever one fits." },
           area: { type: "string", enum: [...AREAS], description: "work for anything about their job, personal for everything else." },
-          who: { type: "string", enum: [...WHO], description: "kids or grown-ups only when they said who it's for, like the kids' lunchboxes. Empty otherwise." },
+          people: { type: "array", items: { type: "string" }, description: "Who it's for or with, only when they said: a first name like Maya, or a plain role like the kids or the dentist. Never a surname. Empty otherwise." },
           due: { type: "string", description: "The day it's due as YYYY-MM-DD, only when they gave a date or clearly meant one, like tomorrow or by Friday, worked out from the conversation date. Empty when they didn't." },
           start: { type: "string", description: "For an event, when it starts: YYYY-MM-DD, or YYYY-MM-DDTHH:MM when they gave a time. Empty for every other kind." },
           location: { type: "string", description: "A place name like school or the dentist, never an address. Empty when none was mentioned." },
@@ -125,7 +125,7 @@ You get the person's profile (USER.md), the lessons kept so far (MEMORY.md), the
 - File each item under one to three topics. Reuse an existing topic whenever it fits, so the same things end up together; only start a new one when nothing fits.
 - Facts are lasting things about the person themselves, not the items they dumped.
 
-- Give every item an area, work or personal. Fill in who only when they said who it's for.
+- Give every item an area, work or personal. Fill in people only when they said who it's for or with.
 - A due date is one they gave or clearly meant. Work it out from the conversation date, and write it as YYYY-MM-DD. For an event, put when it happens in start and where in location, as a place name only. Leave a field empty when they didn't say.
 - If a due date or importance follows from what they said but they didn't state it, you may fill it in, and you must list it in inferred. Never invent a deadline: when you aren't sure, leave it empty.
 - Only record what the transcript or the noted facts support. Never invent anything about the person.
@@ -179,17 +179,17 @@ export async function reflect(client: Anthropic, input: ReflectionInput): Promis
 }
 
 /** Keeps only well-formed values for the task fields, so a model slip never files a bad date. */
-function tidyFields(item: DumpItem): Pick<DumpItem, "area" | "who" | "due" | "start" | "location" | "importance" | "inferred"> {
+function tidyFields(item: DumpItem): Pick<DumpItem, "area" | "people" | "due" | "start" | "location" | "importance" | "inferred"> {
   const text = (value: unknown) => (typeof value === "string" ? value.trim() : "");
   const due = ISO_DATE.test(text(item.due)) ? text(item.due) : "";
   const start = item.kind === "event" && ISO_START.test(text(item.start)) ? text(item.start) : "";
   const location = item.kind === "task" || item.kind === "event" ? text(item.location).replace(/\s+/g, " ").slice(0, MAX_LOCATION) : "";
   const importance = (IMPORTANCE as readonly string[]).includes(text(item.importance)) ? (text(item.importance) as Importance) : "";
   const area = (AREAS as readonly string[]).includes(text(item.area)) ? (text(item.area) as Area) : "personal";
-  const who = (WHO as readonly string[]).includes(text(item.who)) ? (text(item.who) as Who) : "";
+  const people = [...new Set((Array.isArray(item.people) ? item.people : []).map((p) => text(p).replace(/\s+/g, " ").slice(0, MAX_PERSON)).filter(Boolean))].slice(0, MAX_PEOPLE);
   const filled: Record<Inferable, string> = { area, due, importance };
   const inferred = [...new Set(Array.isArray(item.inferred) ? item.inferred : [])].filter((f): f is Inferable => (INFERABLE as readonly string[]).includes(f) && filled[f] !== "");
-  return { area, who, due, start, location, importance, inferred };
+  return { area, people, due, start, location, importance, inferred };
 }
 
 /** Trims every field to its limit, lowercases and dedupes topics, and drops items with no title. */

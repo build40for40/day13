@@ -7,7 +7,7 @@ export type Session = { id: string; started_at: string; opening_line?: string }
 /** What the brain files with a task or event. Only the fields that are set are there. */
 export type NoteFields = {
   area?: 'work' | 'personal'
-  who?: 'kids' | 'grown-ups'
+  people?: string[]
   /** YYYY-MM-DD */
   due?: string
   /** YYYY-MM-DD or YYYY-MM-DDTHH:MM, London time */

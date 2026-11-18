@@ -65,13 +65,17 @@ export function toItem(note: Note, todayIso: string): (Item & { days: number | n
     days: date ? daysUntil(todayIso, date) : null,
     event: note.kind === 'event',
     urgent: f.importance === 'high',
-    who: f.who === 'kids' ? 'Kids' : f.who === 'grown-ups' ? 'Grown-ups' : undefined,
+    who: label(f.people?.[0]),
     area: f.area === 'work' ? 'work' : 'personal',
     undated: date === null,
     done: status !== 'open',
     doneAt: f.completed_at ? Date.parse(f.completed_at) : undefined,
     updated: Date.parse(note.updated_at) || 0,
   }
+}
+
+function label(name: string | undefined): string | undefined {
+  return name?.replace(/^the /i, '').replace(/^./, (c) => c.toUpperCase()) || undefined
 }
 
 /** How many of each area a day's list aims for: mostly work on weekdays, mostly personal at weekends. It's a starting guess, not a rule. */

@@ -19,11 +19,11 @@ const item = (overrides: Partial<DumpItem>): DumpItem => ({ kind: "task", title:
 describe("tidying the task fields", () => {
   it("keeps good values and drops malformed ones", () => {
     const [good, bad] = tidyItems([
-      item({ due: " 2026-11-19 ", importance: "high", area: "work", who: "kids", location: "the fake school", inferred: ["due", "importance"] }),
-      item({ title: "Bad one", due: "tomorrow", importance: "urgent" as never, area: "sideways" as never, who: "cat" as never, inferred: ["due", "colour" as never] }),
+      item({ due: " 2026-11-19 ", importance: "high", area: "work", people: [" the  kids ", "Maya", "Maya"], location: "the fake school", inferred: ["due", "importance"] }),
+      item({ title: "Bad one", due: "tomorrow", importance: "urgent" as never, area: "sideways" as never, people: "cat" as never, inferred: ["due", "colour" as never] }),
     ]);
-    expect(good).toMatchObject({ due: "2026-11-19", importance: "high", area: "work", who: "kids", location: "the fake school", inferred: ["due", "importance"] });
-    expect(bad).toMatchObject({ due: "", importance: "", area: "personal", who: "", inferred: [] });
+    expect(good).toMatchObject({ due: "2026-11-19", importance: "high", area: "work", people: ["the kids", "Maya"], location: "the fake school", inferred: ["due", "importance"] });
+    expect(bad).toMatchObject({ due: "", importance: "", area: "personal", people: [], inferred: [] });
   });
 
   it("only lists a field as inferred when it has a value", () => {
@@ -52,14 +52,14 @@ describe("filing tasks and events", () => {
     await runInDurableObject(env.USER_BRAIN.get(env.USER_BRAIN.idFromName(name)), (brain: UserBrain, state) => {
       brain.getProfile();
       const items = tidyItems([
-        item({ title: "Pick up the fake costume", due: "2026-11-19", importance: "high", area: "personal", who: "kids", location: "school", inferred: ["importance"] }),
+        item({ title: "Pick up the fake costume", due: "2026-11-19", importance: "high", area: "personal", people: ["the kids"], location: "school", inferred: ["importance"] }),
         item({ kind: "event", title: "Fake school concert", start: "2026-11-21T19:30", location: "the fake hall" }),
       ]);
       writeReflection(state.storage.sql, { id: "aaaaaaaa-1111-4111-8111-111111111111", started_at: "2026-11-18T09:00:00Z", reflection: { summary: "Fake.", items, facts: [], lessons: [] } }, "2026-11-18T09:05:00Z");
       const task = state.storage.sql.exec<{ path: string; frontmatter: string; body: string }>("SELECT path, frontmatter, body FROM files WHERE kind = 'task'").one();
       expect(task.path).toBe("tasks/2026-11-18-pick-up-the-fake-costume.md");
-      expect(JSON.parse(task.frontmatter)).toMatchObject({ due: "2026-11-19", importance: "high", area: "personal", who: "kids", location: "school", status: "open", inferred: ["importance"] });
-      expect(task.body).toContain("Due 2026-11-19. Where: school.");
+      expect(JSON.parse(task.frontmatter)).toMatchObject({ due: "2026-11-19", importance: "high", area: "personal", people: ["the kids"], location: "school", status: "open", inferred: ["importance"] });
+      expect(task.body).toContain("Due 2026-11-19. Where: school. Who: the kids.");
       const event = state.storage.sql.exec<{ path: string; frontmatter: string }>("SELECT path, frontmatter FROM files WHERE kind = 'event'").one();
       expect(event.path).toBe("events/2026-11-18-fake-school-concert.md");
       expect(JSON.parse(event.frontmatter)).toMatchObject({ start: "2026-11-21T19:30", status: "open" });
@@ -135,8 +135,8 @@ describe("the migration that adds events", () => {
 
       expect(migrate(sql, "2026-11-18T10:00:00Z")).toBe(1);
       expect(sql.exec<{ path: string; body: string }>("SELECT path, body FROM files WHERE path = 'tasks/old.md'").one()).toEqual({ path: "tasks/old.md", body: "# Old fake task" });
-      sql.exec("INSERT INTO files (path, kind, updated_at) VALUES ('events/x.md', 'event', 'now')");
-      expect(sql.exec("SELECT path FROM files WHERE kind = 'event'").toArray()).toHaveLength(1);
+      sql.exec("INSERT INTO files (path, kind, updated_at) VALUES ('events/x.md', 'event', 'now'), ('notes/x.md', 'a_kind_added_later', 'now')");
+      expect(sql.exec("SELECT path FROM files WHERE path IN ('events/x.md', 'notes/x.md')").toArray()).toHaveLength(2);
     });
   });
 });

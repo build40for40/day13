@@ -202,17 +202,18 @@ function writeItem(sql: SqlStorage, session: ReflectedSession, item: DumpItem, n
   const body = [
     `# ${item.title}`,
     item.detail,
-    [item.due ? `Due ${item.due}.` : "", item.start ? `When: ${item.start}.` : "", item.location ? `Where: ${item.location}.` : ""].filter(Boolean).join(" "),
+    [item.due ? `Due ${item.due}.` : "", item.start ? `When: ${item.start}.` : "", item.location ? `Where: ${item.location}.` : "", item.people.length ? `Who: ${item.people.join(", ")}.` : ""].filter(Boolean).join(" "),
     item.answer ? `## Answer\n\n${item.answer}` : "",
     [topics.length ? `Filed under ${topics.join(", ")}.` : "", `From ${wikilink(sessionNotePath(session))}.`].filter(Boolean).join(" "),
   ]
     .filter(Boolean)
     .join("\n\n")
     .concat("\n");
-  const fields: Frontmatter = { area: item.area, who: item.who, due: item.due, start: item.start, location: item.location, importance: item.importance };
+  const fields: Frontmatter = { area: item.area, due: item.due, start: item.start, location: item.location, importance: item.importance };
   const present = Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== "" && v !== undefined));
   const frontmatter: Frontmatter = { kind: item.kind, session_id: session.id, date: londonDate(session.started_at), topics: item.topics, ...(present as Frontmatter) };
   if (item.kind === "task" || item.kind === "event") frontmatter.status = "open";
+  if (item.people.length) frontmatter.people = item.people;
   if (item.inferred.length) frontmatter.inferred = item.inferred;
   writeFile(sql, path, item.kind, frontmatter, body, now, `session:${session.id}`);
   return path;
