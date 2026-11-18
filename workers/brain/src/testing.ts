@@ -2,7 +2,7 @@ import { runInDurableObject } from "cloudflare:test";
 import { env, exports } from "cloudflare:workers";
 import type { DumpItem } from "./reflection";
 import { exportJWK, generateKeyPair, SignJWT, type CryptoKey } from "jose";
-import { vi } from "vitest";
+import { afterEach, vi } from "vitest";
 import { BASE_PATH } from "./http";
 import { workosAuthenticateUrl, workosIssuer, workosJwksUrl, workosUserUrl } from "./workos";
 
@@ -166,9 +166,22 @@ export const fakeReflection = {
 export const fakeDraft = { summary: fakeReflection.summary, items: fakeReflection.items };
 
 let userCount = 0;
+const usersThisTest: string[] = [];
 
 /** A new fake WorkOS user id. Storage isn't reset between tests, so each test that touches a brain makes its own user. */
-export const fakeUser = () => `user_fake${++userCount}${crypto.randomUUID().replaceAll("-", "").slice(0, 8)}`;
+export const fakeUser = () => {
+  const sub = `user_fake${++userCount}${crypto.randomUUID().replaceAll("-", "").slice(0, 8)}`;
+  usersThisTest.push(sub);
+  return sub;
+};
+
+// A brain sets an alarm a second after anything is said. Left alone it fires during a later test, where it uses up that
+// test's scripted replies, or after the mocks are gone, where it calls the real API.
+afterEach(async () => {
+  for (const sub of usersThisTest.splice(0)) {
+    await runInDurableObject(env.USER_BRAIN.get(env.USER_BRAIN.idFromName(sub)), (_, state) => state.storage.deleteAlarm());
+  }
+});
 
 /** Calls the Worker as a signed-in user, or signed out with `sub: null`. */
 export async function api(path: string, { sub = "user_alice", method = "GET", body }: { sub?: string | null; method?: string; body?: unknown } = {}): Promise<Response> {
