@@ -1,7 +1,7 @@
 import { runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UserBrain } from "../brain";
-import { api, brainFor, callMcp, fakeReflection, aMinuteLater, fakeUser, goneQuiet, mockClaude, mockWorkos, noTaskFields, signInToMcp, type WorkosMock } from "../testing";
+import { api, brainFor, callMcp, fakeReflection, aMinuteLater, fakeUser, goneQuiet, mockClaude, mockWorkos, noTaskFields, signInToMcp, type WorkosMock, MCP_ORIGIN } from "../testing";
 import { OPEN_BRAIN_GUIDE } from "@day13/instructions";
 import { CAPTURED, NO_SUCH_NOTE, NO_SUCH_TASK, NOTHING_TO_CHANGE } from "./server";
 
@@ -17,6 +17,16 @@ const callTool = async (token: string, name: string, args: Record<string, unknow
 const toolText = (rpc: { result?: { content: { text: string }[] } }) => rpc.result!.content[0].text;
 
 describe("the MCP tools", () => {
+  it("introduces itself as Dumpling, with its own icons on its own host", async () => {
+    const token = await signInToMcp(fakeUser(), workos);
+    const { result } = await (await callMcp(token, "initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "fake-client", version: "0" } })).rpc();
+    expect(result.serverInfo).toMatchObject({ name: "dumpling", title: "Dumpling", websiteUrl: MCP_ORIGIN });
+    expect(result.serverInfo.icons).toEqual([
+      { src: `${MCP_ORIGIN}/icon-512.png`, mimeType: "image/png", sizes: ["512x512"] },
+      { src: `${MCP_ORIGIN}/favicon.svg`, mimeType: "image/svg+xml", sizes: ["any"] },
+    ]);
+  });
+
   it("lists every tool, with only the saving and changing ones able to write", async () => {
     const token = await signInToMcp(fakeUser(), workos);
     const { result } = await (await callMcp(token, "tools/list")).rpc();

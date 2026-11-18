@@ -113,6 +113,10 @@ A stateless MCP server at `MCP_RESOURCE` (`https://dumpling.build40for40.com/mcp
 
 The wording the model sees (server instructions, tool descriptions and the guide `open_brain` starts with) lives in the `@day13/instructions` workspace package (`instructions/` at the repo root), which the evals in `evals/` test too.
 
+### Icons
+
+Connected apps show a server's icon from its own host, and fall back to the parent site's when there isn't one. So `assets/` holds Dumpling's: `favicon.ico`, `favicon.svg`, `apple-touch-icon.png` and `icon-512.png`, plus a one-line `index.html` that links them. Cloudflare serves these as static assets before the Worker runs. The server also names the PNG and SVG as its `icons` when a client initialises, with `Dumpling` as its title. `favicon.svg` is the source: redraw the others from it if it changes.
+
 ### Sign-in
 
 `@cloudflare/workers-oauth-provider` makes this Worker the authorisation server and wraps the voice API as its default handler, so `/day13/api` and its WorkOS check work as before. On the MCP host it serves:
