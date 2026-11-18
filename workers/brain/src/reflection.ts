@@ -197,7 +197,7 @@ You get the person's profile (USER.md), the lessons kept so far (MEMORY.md), the
 
 export const DRAFT_PROMPT = `${REFLECTION_PROMPT}
 
-This log is still open and they may say more. File the items it holds so far. Page entries, facts and lessons wait until it's finished.`;
+This log is still open and they may say more. File the items it holds so far. Page entries, facts and lessons wait until it's finished. Write the summary about what they said and nothing else: the person reads it, so don't mention the log, that it's still open or that more may come.`;
 
 export function reflectionRequest(input: ReflectionInput): Anthropic.MessageCreateParamsNonStreaming {
   return structuredRequest(REFLECTION_PROMPT, renderInput(input), reflectionSchema);

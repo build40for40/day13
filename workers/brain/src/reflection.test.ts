@@ -46,6 +46,7 @@ describe("draftRequest", () => {
     const request = draftRequest(input);
     expect(request).toMatchObject({ model: "claude-sonnet-5-5", output_config: { effort: "medium", format: { type: "json_schema", schema: { required: ["summary", "items"] } } } });
     expect(request.system).toContain("This log is still open");
+    expect(request.system).toContain("don't mention the log");
   });
 });
 
