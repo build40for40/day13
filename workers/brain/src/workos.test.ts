@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mockWorkos, otherKey, signToken, type WorkosMock } from "./testing";
-import { authenticate, deleteWorkosUser } from "./workos";
+import { authenticate, deleteWorkosUser, exchangeWorkosCode, workosAuthorizeUrl } from "./workos";
 
 const withAuth = (value?: string) => new Request("https://example.com/", { headers: value ? { Authorization: value } : {} });
 const clientId = env.WORKOS_CLIENT_ID;
@@ -60,5 +60,26 @@ describe("deleteWorkosUser", () => {
   it("reports a WorkOS failure", async () => {
     workos.deleteStatus = 500;
     expect(await deleteWorkosUser("user_alice", env.WORKOS_API_KEY)).toBe(false);
+  });
+});
+
+describe("workosAuthorizeUrl", () => {
+  it("sends people to AuthKit with the redirect and state", () => {
+    const url = new URL(workosAuthorizeUrl("client_fake", "https://example.com/callback", "state_fake"));
+    expect(`${url.origin}${url.pathname}`).toBe("https://api.workos.com/user_management/authorize");
+    expect(Object.fromEntries(url.searchParams)).toEqual({ client_id: "client_fake", redirect_uri: "https://example.com/callback", response_type: "code", provider: "authkit", state: "state_fake" });
+  });
+});
+
+describe("exchangeWorkosCode", () => {
+  it("trades a sign-in code for the user's id with the API key", async () => {
+    workos.codes.set("code_fake", "user_alice");
+    expect(await exchangeWorkosCode("code_fake", clientId, env.WORKOS_API_KEY)).toBe("user_alice");
+  });
+
+  it("returns null when WorkOS refuses the code or the key", async () => {
+    workos.codes.set("code_fake", "user_alice");
+    expect(await exchangeWorkosCode("code_unknown", clientId, env.WORKOS_API_KEY)).toBeNull();
+    expect(await exchangeWorkosCode("code_fake", clientId, "wrong-key")).toBeNull();
   });
 });

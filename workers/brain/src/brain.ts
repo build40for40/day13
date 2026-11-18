@@ -4,7 +4,7 @@ import { createClient, liveModel } from "./claude";
 import { consolidate, needsConsolidation } from "./consolidation";
 import { error } from "./http";
 import { USER_MD, type Preferences, type Profile, type ProfilePatch, type PublicProfile } from "./profile";
-import { assembleContext, MAX_RECENT_ITEMS, MAX_SESSION_NOTES, MAX_TOPICS, OPENING_LINE, type Note } from "./prompt";
+import { assembleContext, MAX_RECENT_ITEMS, MAX_SESSION_NOTES, MAX_TOPICS, OPENING_LINE, type ContextSources, type Note } from "./prompt";
 import { renderRecall, search, type SearchableNote } from "./recall";
 import { REFERENCE } from "./reference";
 import { isRetryable, reflect, type Reflection } from "./reflection";
@@ -24,6 +24,7 @@ export const DAILY_TURN_CAP = 200;
 export const REFLECTION_RETRY_MINUTES = [1, 5, 30, 120];
 const REFLECTION_TIMEOUT_MS = 10 * 60_000;
 const ITEM_KINDS_SQL = "('idea', 'question', 'task', 'thought')";
+const CAPTURE_SESSION = "capture_session";
 
 const SSE_HEADERS = { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform" };
 export const TURN_FAILED = "Sorry, I lost the thread there. Could you say that again?";
@@ -233,6 +234,29 @@ export class UserBrain extends DurableObject<Env> {
     return this.getSession(sessionId) ?? "dropped";
   }
 
+  /**
+   * Keeps something said in another app, like a chat with an MCP client. Captures gather in one open session with no replies,
+   * which ends and is filed like any conversation once it's been quiet for IDLE_MINUTES, reaches TURN_CAP or passes midnight.
+   */
+  async capture(text: string): Promise<void> {
+    this.init();
+    const now = new Date();
+    const at = now.toISOString();
+    this.endExpiredSessions(now);
+    const turn: Turn = { role: "user", at, text };
+    const open = this.openCaptureSession();
+    if (open) {
+      const userTurns = open.user_turns + 1;
+      this.sql.exec("UPDATE sessions SET turns = ?, user_turns = ?, last_message_at = ? WHERE id = ?", JSON.stringify([...JSON.parse(open.turns), turn]), userTurns, at, open.id);
+      if (userTurns >= TURN_CAP) this.endSession(open.id, "turn_cap", now);
+    } else {
+      const id = crypto.randomUUID();
+      this.sql.exec("INSERT INTO sessions (id, model, context, turns, user_turns, started_at, last_message_at) VALUES (?, 'capture', '', ?, 1, ?, ?)", id, JSON.stringify([turn]), at, at);
+      this.saveSetting(CAPTURE_SESSION, id);
+    }
+    await this.setNextAlarm();
+  }
+
   getSession(sessionId: string): SessionView | null {
     this.init();
     const row = this.getSessionRow(sessionId);
@@ -270,6 +294,19 @@ export class UserBrain extends DurableObject<Env> {
     return this.ctx.storage.transactionSync(() => restoreVersion(this.sql, id, new Date().toISOString()));
   }
 
+  /** What a voice session starts from, for clients that open the brain another way. */
+  getBrief(): ContextSources {
+    this.init();
+    return this.contextSources(new Date().toISOString());
+  }
+
+  /** What the `recall` tool answers with: the best matches from this person's notes and the shared reference notes. */
+  recall(query: string): string {
+    this.init();
+    const vault = this.sql.exec<SearchableNote & Record<string, SqlStorageValue>>("SELECT path, body FROM files ORDER BY path").toArray();
+    return renderRecall(search([...vault, ...REFERENCE], query));
+  }
+
   // The alarm
 
   async alarm(): Promise<void> {
@@ -293,6 +330,12 @@ export class UserBrain extends DurableObject<Env> {
 
   private getSessionRow(id: string): SessionRow | undefined {
     return this.sql.exec<SessionRow>("SELECT * FROM sessions WHERE id = ?", id).toArray()[0];
+  }
+
+  private openCaptureSession(): SessionRow | undefined {
+    const id = this.setting(CAPTURE_SESSION);
+    const row = id ? this.getSessionRow(id) : undefined;
+    return row && !row.ended_at ? row : undefined;
   }
 
   private openSessions(): SessionRow[] {
@@ -319,6 +362,10 @@ export class UserBrain extends DurableObject<Env> {
   }
 
   private assembleContext(at: string): string {
+    return assembleContext(this.contextSources(at));
+  }
+
+  private contextSources(at: string): ContextSources {
     const { preferences, about } = this.readUserMd();
     const sessionNotes = this.sql.exec<FileRow>("SELECT path, frontmatter, body FROM files WHERE kind = 'session' ORDER BY path DESC LIMIT ?", MAX_SESSION_NOTES).toArray();
     const topics = this.sql
@@ -329,7 +376,7 @@ export class UserBrain extends DurableObject<Env> {
       )
       .toArray();
     const recent = this.sql.exec<FileRow>(`SELECT path, body FROM files WHERE kind IN ${ITEM_KINDS_SQL} ORDER BY updated_at DESC, path DESC LIMIT ?`, MAX_RECENT_ITEMS).toArray();
-    return assembleContext({
+    return {
       user: { preferences, about },
       memory: readFile(this.sql, MEMORY_MD)?.body ?? null,
       sessionNotes: sessionNotes as Note[],
@@ -338,13 +385,7 @@ export class UserBrain extends DurableObject<Env> {
       reference: REFERENCE.map((note) => note.path),
       time: londonTime(at),
       today: londonDay(at),
-    });
-  }
-
-  /** What the `recall` tool answers with: the best matches from this person's notes and the shared reference notes. */
-  private recall(query: string): string {
-    const vault = this.sql.exec<SearchableNote & Record<string, SqlStorageValue>>("SELECT path, body FROM files ORDER BY path").toArray();
-    return renderRecall(search([...vault, ...REFERENCE], query));
+    };
   }
 
   // Reflection

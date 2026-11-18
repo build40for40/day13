@@ -3,10 +3,13 @@
   "name": "day13-brain",
   "account_id": "9b4d3e616e55585a0ae844f424717b43",
   "compatibility_date": "2026-11-04",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "main": "src/index.ts",
   "vars": {
     "WORKOS_CLIENT_ID": "client_01M6E5ZDQ9XBYYE28XYN7H3XTJ",
-    "LIVE_MODEL": "claude-sonnet-5-5"
+    "LIVE_MODEL": "claude-sonnet-5-5",
+    // The URL MCP clients connect to. Every OAuth token is bound to it, and its host serves sign-in and discovery.
+    "MCP_RESOURCE": "https://day13-mcp.build40for40.com/mcp"
   },
   // Secrets, set by the deploy workflow or with `pnpm wrangler secret put <NAME>`, and in .dev.vars locally:
   //   ANTHROPIC_API_KEY, WORKOS_API_KEY
@@ -15,9 +18,13 @@
     "bindings": [{ "name": "USER_BRAIN", "class_name": "UserBrain" }]
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["UserBrain"] }],
+  // OAuth clients, grants and tokens for MCP sign-in. The namespace is called day13-oauth.
+  "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "f295a113d3c1470c98801448453759c4" }],
   "routes": [
     { "pattern": "build40for40.com/day13/api", "zone_name": "build40for40.com" },
-    { "pattern": "build40for40.com/day13/api/*", "zone_name": "build40for40.com" }
+    { "pattern": "build40for40.com/day13/api/*", "zone_name": "build40for40.com" },
+    // The MCP server's own host, matching MCP_RESOURCE. Deploying creates the custom domain and its DNS record.
+    { "pattern": "day13-mcp.build40for40.com", "custom_domain": true }
   ],
   "workers_dev": false,
   "preview_urls": false,

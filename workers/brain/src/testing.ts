@@ -2,7 +2,7 @@ import { env, exports } from "cloudflare:workers";
 import { exportJWK, generateKeyPair, SignJWT, type CryptoKey } from "jose";
 import { vi } from "vitest";
 import { BASE_PATH } from "./http";
-import { workosIssuer, workosJwksUrl, workosUserUrl } from "./workos";
+import { workosAuthenticateUrl, workosIssuer, workosJwksUrl, workosUserUrl } from "./workos";
 
 const KID = "test-key";
 const keyPair = generateKeyPair("RS256", { extractable: true });
@@ -32,6 +32,8 @@ export async function signToken({ sub = "user_alice", issuer, expiresAt, key }: 
 export interface WorkosMock {
   deletedUsers: string[];
   deleteStatus: number;
+  /** Sign-in codes WorkOS will accept, each for the user id it signs in. */
+  codes: Map<string, string>;
 }
 
 export type ClaudeBlock = { type: "text"; text: string } | { type: "tool_use"; id?: string; name: string; input: unknown };
@@ -62,6 +64,7 @@ function installFetchMock(): void {
     if (request.url.startsWith(ANTHROPIC_MESSAGES_URL) && claudeMock) return claudeResponse(claudeMock, request);
     if (workosMock) {
       if (request.method === "GET" && request.url === workosJwksUrl(env.WORKOS_CLIENT_ID)) return Response.json(await jwks);
+      if (request.method === "POST" && request.url === workosAuthenticateUrl) return workosAuthenticate(workosMock, request);
       const userId = decodeURIComponent(request.url.split("/").pop() ?? "");
       if (request.method === "DELETE" && request.url === workosUserUrl(userId)) {
         if (request.headers.get("Authorization") !== `Bearer ${env.WORKOS_API_KEY}`) return new Response(null, { status: 401 });
@@ -80,11 +83,20 @@ export function mockClaude(...replies: ClaudeReply[]): ClaudeMock {
   return claudeMock;
 }
 
-/** Stands in for WorkOS: serves the test JWKS, records user deletions and fails on any other outbound request. */
+/** Stands in for WorkOS: serves the test JWKS, trades sign-in codes, records user deletions and fails on any other outbound request. */
 export function mockWorkos(): WorkosMock {
   installFetchMock();
-  workosMock = { deletedUsers: [], deleteStatus: 202 };
+  workosMock = { deletedUsers: [], deleteStatus: 202, codes: new Map() };
   return workosMock;
+}
+
+async function workosAuthenticate(mock: WorkosMock, request: Request): Promise<Response> {
+  const body = (await request.json()) as Record<string, unknown>;
+  if (body.client_id !== env.WORKOS_CLIENT_ID || body.client_secret !== env.WORKOS_API_KEY) return Response.json({ error: "invalid_client" }, { status: 401 });
+  const id = body.grant_type === "authorization_code" && typeof body.code === "string" ? mock.codes.get(body.code) : undefined;
+  if (!id) return Response.json({ error: "invalid_grant", error_description: "The code is invalid." }, { status: 400 });
+  mock.codes.delete(body.code as string);
+  return Response.json({ user: { object: "user", id, first_name: "Fake" }, access_token: "fake-workos-access-token", refresh_token: "fake-workos-refresh-token" });
 }
 
 async function claudeResponse(mock: ClaudeMock, request: Request): Promise<Response> {
@@ -167,4 +179,86 @@ export async function readEvents<T = unknown>(response: Response): Promise<T[]> 
       if (eventLine !== `event: ${data.type}`) throw new Error(`Event name ${eventLine} doesn't match ${data.type}`);
       return data as T;
     });
+}
+
+export const MCP_ORIGIN = new URL(env.MCP_RESOURCE).origin;
+export const CLIENT_REDIRECT_URI = "https://client.example/callback";
+
+/** The `name=value` pairs a response sets, ready to send back as a Cookie header. */
+export function cookiesFrom(...responses: Response[]): string {
+  return responses
+    .flatMap((r) => r.headers.getSetCookie())
+    .map((cookie) => cookie.split(";")[0])
+    .filter((pair) => !pair.endsWith("="))
+    .join("; ");
+}
+
+/** Registers a fake public MCP client through dynamic client registration and returns its id. */
+export async function registerMcpClient(): Promise<string> {
+  const response = await exports.default.fetch(`${MCP_ORIGIN}/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ client_name: "Fake MCP client", redirect_uris: [CLIENT_REDIRECT_URI], token_endpoint_auth_method: "none" }),
+  });
+  if (response.status !== 201) throw new Error(`Registration failed with ${response.status}`);
+  return ((await response.json()) as { client_id: string }).client_id;
+}
+
+export async function pkce(): Promise<{ verifier: string; challenge: string }> {
+  const verifier = `${crypto.randomUUID()}${crypto.randomUUID()}`;
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
+  const challenge = btoa(String.fromCharCode(...digest)).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+  return { verifier, challenge };
+}
+
+export function authorizeUrl(clientId: string, challenge: string): string {
+  const params = new URLSearchParams({ response_type: "code", client_id: clientId, redirect_uri: CLIENT_REDIRECT_URI, state: "client-state", code_challenge: challenge, code_challenge_method: "S256", resource: env.MCP_RESOURCE });
+  return `${MCP_ORIGIN}/authorize?${params}`;
+}
+
+export const consentHandle = (html: string) => html.match(/name="handle" value="([^"]+)"/)?.[1] ?? "";
+
+/** Signs a WorkOS user in to the MCP server the way Claude would, from registration to token, and returns the access token. */
+export async function signInToMcp(sub: string, workos: WorkosMock): Promise<string> {
+  const clientId = await registerMcpClient();
+  const { verifier, challenge } = await pkce();
+  const consent = await exports.default.fetch(authorizeUrl(clientId, challenge));
+  const approved = await exports.default.fetch(`${MCP_ORIGIN}/authorize`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded", Cookie: cookiesFrom(consent) },
+    body: new URLSearchParams({ handle: consentHandle(await consent.text()), decision: "approve" }),
+    redirect: "manual",
+  });
+  const state = new URL(approved.headers.get("Location")!).searchParams.get("state")!;
+  workos.codes.set("fake-workos-code", sub);
+  const callback = await exports.default.fetch(`${MCP_ORIGIN}/callback?code=fake-workos-code&state=${state}`, { headers: { Cookie: cookiesFrom(approved) }, redirect: "manual" });
+  const code = new URL(callback.headers.get("Location")!).searchParams.get("code")!;
+  const token = await exports.default.fetch(`${MCP_ORIGIN}/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: CLIENT_REDIRECT_URI, client_id: clientId, code_verifier: verifier, resource: env.MCP_RESOURCE }),
+  });
+  if (!token.ok) throw new Error(`Token exchange failed with ${token.status}`);
+  return ((await token.json()) as { access_token: string }).access_token;
+}
+
+export interface JsonRpcResponse {
+  id: number;
+  result?: any;
+  error?: { code: number; message: string };
+}
+
+/** Sends one JSON-RPC request to the MCP endpoint and returns its response, whether it came back as JSON or a stream. */
+export async function callMcp(token: string | null, method: string, params: Record<string, unknown> = {}): Promise<Response & { rpc: () => Promise<JsonRpcResponse> }> {
+  // Real requests always carry Host, which the MCP handler checks against allowedHostnames. A test fetch doesn't add one.
+  const headers: Record<string, string> = { Host: new URL(env.MCP_RESOURCE).host, "Content-Type": "application/json", Accept: "application/json, text/event-stream", "MCP-Protocol-Version": "2025-11-25" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const response = await exports.default.fetch(env.MCP_RESOURCE, { method: "POST", headers, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) });
+  const rpc = async (): Promise<JsonRpcResponse> => {
+    const text = await response.text();
+    if (!response.headers.get("Content-Type")?.includes("text/event-stream")) return JSON.parse(text);
+    const messages = text.split("\n").filter((line) => line.startsWith("data: ")).map((line) => JSON.parse(line.slice("data: ".length)) as JsonRpcResponse);
+    return messages.find((m) => m.id === 1)!;
+  };
+  return Object.assign(response, { rpc });
 }
