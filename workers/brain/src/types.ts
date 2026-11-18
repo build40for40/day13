@@ -12,3 +12,6 @@ export type Turn = { role: "user"; at: string; text: string } | { role: "assista
 
 /** What a turn streams back, one server-sent event each. `session_ended` means the next turn needs a new session. */
 export type StreamEvent = { type: "text"; delta: string } | { type: "done"; session_ended: boolean } | { type: "error"; message: string };
+
+/** A Durable Object stub typed from the class itself, since the generated stub types recurse too deeply on JSON. */
+export type Rpc<T> = { [K in keyof T]: T[K] extends (...args: infer A) => infer R ? (...args: A) => Promise<Awaited<R>> : never };

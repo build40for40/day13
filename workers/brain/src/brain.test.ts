@@ -127,6 +127,23 @@ describe("sessions", () => {
   });
 });
 
+describe("captures", () => {
+  it("gather in one session until something ends it, like a voice session starting", async () => {
+    const sub = fakeUser();
+    const brain = brainFor(sub) as unknown as UserBrain;
+    await brain.capture("A fake idea");
+    await brain.capture("Another fake idea");
+    const open = await runInDurableObject(brainFor(sub), (_: UserBrain, state) => state.storage.sql.exec<{ id: string; user_turns: number }>("SELECT id, user_turns FROM sessions").toArray());
+    expect(open).toEqual([expect.objectContaining({ user_turns: 2 })]);
+
+    await startSession(sub);
+    expect(await session(sub, open[0].id)).toMatchObject({ end_reason: "replaced", reflection_status: "pending", turns: [{ role: "user", text: "A fake idea" }, { role: "user", text: "Another fake idea" }] });
+    await brain.capture("A third fake idea");
+    const captures = await runInDurableObject(brainFor(sub), (_: UserBrain, state) => state.storage.sql.exec("SELECT id FROM sessions WHERE model = 'capture'").toArray());
+    expect(captures).toHaveLength(2);
+  });
+});
+
 describe("reflection failures", () => {
   async function endedSession(sub: string): Promise<string> {
     const { id } = await startSession(sub);

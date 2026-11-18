@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - workers/brain/**
+      - instructions/**
       - pnpm-lock.yaml
       - pnpm-workspace.yaml
       - .github/workflows/brain.yml
@@ -11,6 +12,7 @@ on:
     branches: [main]
     paths:
       - workers/brain/**
+      - instructions/**
       - pnpm-lock.yaml
       - pnpm-workspace.yaml
       - .github/workflows/brain.yml

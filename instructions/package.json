@@ -1,0 +1,20 @@
+{
+  "name": "@day13/instructions",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The wording that tells ChatGPT and Claude when to read from the brain, what to capture and what never to store.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "skill": "node src/skill.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  }
+}
