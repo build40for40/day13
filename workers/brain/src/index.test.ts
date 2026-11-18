@@ -1,7 +1,7 @@
-import { exports } from "cloudflare:workers";
+import { env, exports } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BASE_PATH } from "./http";
-import { api, fakeUser, mockWorkos, signToken, type WorkosMock } from "./testing";
+import { api, callMcp, fakeUser, MCP_ORIGIN, mockWorkos, signInToMcp, signToken, type WorkosMock } from "./testing";
 
 let workos: WorkosMock;
 beforeEach(() => {
@@ -73,6 +73,13 @@ describe("/me", () => {
     expect(await (await api("/me", { sub })).json()).toMatchObject({ about: expect.stringContaining("# About this person") });
   });
 
+  it("signs MCP clients out of the brain it deletes", async () => {
+    const sub = fakeUser();
+    const token = await signInToMcp(sub, workos);
+    expect((await api("/me", { sub, method: "DELETE" })).status).toBe(204);
+    expect((await callMcp(token, "tools/list")).status).toBe(401);
+  });
+
   it("reports a WorkOS failure after wiping, so it's safe to retry", async () => {
     workos.deleteStatus = 500;
     const response = await api("/me", { sub: fakeUser(), method: "DELETE" });
@@ -104,5 +111,42 @@ describe("validation", () => {
     const wrong = await api("/sessions", { method: "GET" });
     expect(wrong.status).toBe(405);
     expect(wrong.headers.get("Allow")).toBe("POST");
+  });
+});
+
+describe("MCP discovery", () => {
+  const metadataUrl = `${MCP_ORIGIN}/.well-known/oauth-protected-resource/mcp`;
+
+  it("challenges an MCP request without a token, pointing at the resource metadata", async () => {
+    const response = await callMcp(null, "tools/list");
+    expect(response.status).toBe(401);
+    expect(response.headers.get("WWW-Authenticate")).toContain(`resource_metadata="${metadataUrl}"`);
+  });
+
+  it("serves the resource metadata under the resource's path and at the root", async () => {
+    const atPath = await exports.default.fetch(metadataUrl);
+    const atRoot = await exports.default.fetch(`${MCP_ORIGIN}/.well-known/oauth-protected-resource`);
+    const metadata = await atPath.json();
+    expect(metadata).toMatchObject({ resource: env.MCP_RESOURCE, authorization_servers: [MCP_ORIGIN] });
+    expect(atRoot.status).toBe(200);
+    expect(await atRoot.json()).toEqual(metadata);
+  });
+
+  it("advertises sign-in with both client metadata documents and dynamic registration", async () => {
+    const response = await exports.default.fetch(`${MCP_ORIGIN}/.well-known/oauth-authorization-server`);
+    expect(await response.json()).toMatchObject({
+      issuer: MCP_ORIGIN,
+      authorization_endpoint: `${MCP_ORIGIN}/authorize`,
+      token_endpoint: `${MCP_ORIGIN}/token`,
+      registration_endpoint: `${MCP_ORIGIN}/register`,
+      client_id_metadata_document_supported: true,
+      code_challenge_methods_supported: ["S256"],
+    });
+  });
+
+  it("keeps the voice API on WorkOS tokens, so an MCP token doesn't open it", async () => {
+    const token = await signInToMcp(fakeUser(), workos);
+    const response = await exports.default.fetch(`https://build40for40.com${BASE_PATH}/me`, { headers: { Authorization: `Bearer ${token}` } });
+    expect(response.status).toBe(401);
   });
 });

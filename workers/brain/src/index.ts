@@ -1,20 +1,24 @@
+import { env } from "cloudflare:workers";
+import OAuthProvider from "@cloudflare/workers-oauth-provider";
 import { BASE_PATH, error, HttpError, isPlainObject, json, readJson } from "./http";
+import { mcpHandler } from "./mcp/server";
+import { AUTHORIZE_PATH, revokeMcpGrants, signIn, type SignInEnv } from "./mcp/signin";
 import { parseProfilePatch } from "./profile";
 import { NOTE_KINDS, type NoteKind } from "./vault";
 import { authenticate, deleteWorkosUser } from "./workos";
 
 import type { UserBrain } from "./brain";
+import type { Rpc } from "./types";
 
 export { UserBrain } from "./brain";
 
 const MAX_BODY_BYTES = 64 * 1024;
 const MAX_TURN_CHARS = 8_000;
 
-// The generated stub types recurse too deeply on JSON, so the stub is typed from the class directly.
-type Rpc<T> = { [K in keyof T]: T[K] extends (...args: infer A) => infer R ? (...args: A) => Promise<Awaited<R>> : never };
 type Brain = Rpc<Pick<UserBrain, "getProfile" | "updateProfile" | "wipe" | "createSession" | "takeTurn" | "finishSession" | "getSession" | "listNotes" | "getNote" | "listVersions" | "restoreVersion">>;
 
-export default {
+/** The voice API at `/day13/api`, signed in with a WorkOS access token. */
+const api = {
   async fetch(request, env): Promise<Response> {
     const { pathname } = new URL(request.url);
     if (pathname !== BASE_PATH && !pathname.startsWith(`${BASE_PATH}/`)) return error(404, "not_found");
@@ -29,6 +33,39 @@ export default {
       if (e instanceof HttpError) return e.toResponse();
       throw e;
     }
+  },
+} satisfies ExportedHandler<Env>;
+
+const mcpResource = new URL(env.MCP_RESOURCE);
+const PROTECTED_RESOURCE_METADATA = "/.well-known/oauth-protected-resource";
+
+/**
+ * MCP clients connect to `MCP_RESOURCE`, signing in through `/authorize` and `/callback`. The provider owns discovery, `/token`
+ * and `/register`, checks the token on every MCP request, and hands everything else to the voice API unchanged.
+ */
+const provider = new OAuthProvider<Env>({
+  apiRoute: env.MCP_RESOURCE,
+  apiHandler: { fetch: mcpHandler },
+  defaultHandler: {
+    async fetch(request, env) {
+      return (await signIn(request, env as SignInEnv)) ?? api.fetch(request, env);
+    },
+  },
+  authorizeEndpoint: AUTHORIZE_PATH,
+  tokenEndpoint: "/token",
+  clientRegistrationEndpoint: "/register",
+  clientIdMetadataDocumentEnabled: true,
+  resourceMetadata: { resource: env.MCP_RESOURCE },
+});
+
+export default {
+  fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    // Claude looks for the resource metadata at the root rather than under the resource's path (claude-ai-mcp#1277).
+    if (url.origin === mcpResource.origin && url.pathname === PROTECTED_RESOURCE_METADATA) {
+      return provider.fetch(new Request(new URL(`${PROTECTED_RESOURCE_METADATA}${mcpResource.pathname}`, url), request), env, ctx);
+    }
+    return provider.fetch(request, env, ctx);
   },
 } satisfies ExportedHandler<Env>;
 
@@ -108,6 +145,7 @@ function parseTurn(input: unknown): string {
 
 async function deleteAccount(userId: string, brain: Brain, env: Env): Promise<Response> {
   if (!env.WORKOS_API_KEY) return error(503, "account_deletion_unavailable");
+  await revokeMcpGrants((env as SignInEnv).OAUTH_PROVIDER, userId);
   await brain.wipe();
   if (!(await deleteWorkosUser(userId, env.WORKOS_API_KEY))) return error(502, "account_deletion_failed");
   return new Response(null, { status: 204 });
