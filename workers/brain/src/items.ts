@@ -44,7 +44,7 @@ export function filterEvents(notes: NoteSummary[], { from, to, area }: EventFilt
     .sort((a, b) => field(a, "start").localeCompare(field(b, "start")));
 }
 
-function line(note: NoteSummary): string {
+export function itemLine(note: NoteSummary): string {
   const people = Array.isArray(note.fields.people) ? note.fields.people.join(", ") : "";
   const parts = [
     note.title,
@@ -61,7 +61,7 @@ function line(note: NoteSummary): string {
 /** What `list_tasks` and `list_events` hand back: one line per item with its path, then anything captured that isn't filed yet. */
 export function renderItems(heading: string, none: string, notes: NoteSummary[], unfiled: string[], today: string): string {
   const shown = notes.slice(0, MAX_LISTED_ITEMS);
-  const list = shown.length ? [`${heading} Today is ${today}.`, ...shown.map(line), ...(notes.length > shown.length ? [`And ${notes.length - shown.length} more.`] : [])].join("\n") : `${none} Today is ${today}.`;
+  const list = shown.length ? [`${heading} Today is ${today}.`, ...shown.map(itemLine), ...(notes.length > shown.length ? [`And ${notes.length - shown.length} more.`] : [])].join("\n") : `${none} Today is ${today}.`;
   if (!unfiled.length) return list;
   const waiting = unfiled.slice(-MAX_UNFILED_LISTED).map((text) => `- ${text.replaceAll("\n", " ").slice(0, MAX_UNFILED_CHARS)}`);
   return `${list}\n\nCaptured but not filed yet, so there may be more in here:\n${waiting.join("\n")}`;
@@ -79,4 +79,42 @@ export function renderNote(note: NoteView): string {
   ]
     .filter(Boolean)
     .join("\n\n");
+}
+
+/** What the brief says is pressing, so nobody has to ask for the list to hear about it. */
+export interface Agenda {
+  /** Open to-dos due within a week, or overdue by less than a fortnight. */
+  due: string[];
+  /** Events in the next week. */
+  coming: string[];
+  /** Open to-dos nobody has touched in a month, or that are more than a fortnight overdue. */
+  quiet: string[];
+}
+
+const SOON_DAYS = 7;
+const LONG_OVERDUE_DAYS = 14;
+const QUIET_DAYS = 30;
+const MAX_AGENDA_LINES = 10;
+
+const addDays = (day: string, days: number) => new Date(Date.parse(`${day}T12:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+
+export function agenda(tasks: NoteSummary[], events: NoteSummary[], today: string): Agenda {
+  const open = filterTasks(tasks, {});
+  const goneQuiet = (note: NoteSummary) => (field(note, "due") ? field(note, "due") < addDays(today, -LONG_OVERDUE_DAYS) : note.updated_at.slice(0, 10) < addDays(today, -QUIET_DAYS));
+  const pressing = open.filter((note) => field(note, "due") !== "" && field(note, "due") <= addDays(today, SOON_DAYS) && !goneQuiet(note));
+  return {
+    due: pressing.slice(0, MAX_AGENDA_LINES).map((note) => `${itemLine(note)}${field(note, "due") < today ? " Overdue." : ""}`),
+    coming: filterEvents(events, { to: addDays(today, SOON_DAYS) }, today).slice(0, MAX_AGENDA_LINES).map(itemLine),
+    quiet: open.filter(goneQuiet).slice(0, MAX_AGENDA_LINES).map(itemLine),
+  };
+}
+
+/** The agenda as titled lists, leaving out any that are empty. */
+export function agendaSections({ due, coming, quiet }: Agenda): { title: string; body: string }[] {
+  const sections = [
+    { title: "To-dos due this week or overdue", lines: due },
+    { title: "Events in the next week", lines: coming },
+    { title: "To-dos that have gone quiet", lines: quiet },
+  ];
+  return sections.filter((s) => s.lines.length).map((s) => ({ title: s.title, body: s.lines.join("\n") }));
 }

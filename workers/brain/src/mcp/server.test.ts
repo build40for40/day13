@@ -85,6 +85,8 @@ describe("the MCP tools", () => {
     expect(listed).toContain(`- ${path}: Book the fake MOT. Due 2099-01-30. Who: Sam. work.`);
     expect(listed.indexOf("Book the fake MOT")).toBeLessThan(listed.indexOf("Paint the fake shed"));
     expect(toolText(await callTool(token, "list_tasks", { area: "work" }))).not.toContain("Paint the fake shed");
+    expect(toolText(await callTool(token, "recall", { query: "fake shed MOT", area: "work" }))).not.toContain("Paint the fake shed");
+    expect(toolText(await callTool(token, "recall", { query: "fake shed MOT", area: "personal" }))).not.toContain("Book the fake MOT");
     expect(toolText(await callTool(token, "recall", { query: "garage high street" }))).toContain("Book the fake MOT");
 
     await callTool(token, "update_task", { path, due: "2099-02-02" });

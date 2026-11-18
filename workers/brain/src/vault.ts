@@ -277,6 +277,58 @@ export function writeConsolidation(sql: SqlStorage, learned: Learned, now: strin
   rebuildLinks(sql);
 }
 
+/** What a consolidation decided about topics: which to fold together, and where to file items that had none. */
+export interface Tidying {
+  topic_merges: { from: string; into: string }[];
+  topic_filings: { path: string; topics: string[] }[];
+}
+
+const CONSOLIDATION = "consolidation";
+const FILED_UNDER = /^Filed under (?:\[\[[^\]]+\]\](?:, )?)+\./m;
+const filedUnder = (topics: string[]) => `Filed under ${topics.map((topic) => wikilink(topicPath(topic), topic)).join(", ")}.`;
+
+/** Says in an item's body which topics it's under, in the line that already says so or a new one before where it came from. */
+function withTopics(body: string, topics: string[]): string {
+  if (FILED_UNDER.test(body)) return body.replace(FILED_UNDER, filedUnder(topics));
+  const lines = body.trimEnd().split("\n");
+  const from = lines.findIndex((line) => line.startsWith("From [["));
+  if (from !== -1) lines[from] = `${filedUnder(topics)} ${lines[from]}`;
+  else lines.push("", filedUnder(topics));
+  return `${lines.join("\n")}\n`;
+}
+
+/** Folds topics that were the same thing under two names into one, and files items that had no topic. Every change is a version. */
+export function writeTidying(sql: SqlStorage, { topic_merges, topic_filings }: Tidying, now: string): void {
+  for (const { from, into } of topic_merges) {
+    const [fromPath, intoPath] = [topicPath(from), topicPath(into)];
+    const gone = readFile(sql, fromPath);
+    const kept = readFile(sql, intoPath);
+    if (!gone || !kept || fromPath === intoPath) continue;
+    for (const row of sql.exec<FileRow>("SELECT path, kind, frontmatter, body FROM files WHERE instr(body, ?) > 0 AND kind NOT IN ('topic', 'session')", `[[${fromPath.replace(/\.md$/, "")}|`).toArray()) {
+      const frontmatter = JSON.parse(row.frontmatter) as Frontmatter;
+      const topics = [...new Set((Array.isArray(frontmatter.topics) ? frontmatter.topics : []).map((topic) => (topic === from ? into : String(topic))))];
+      writeFile(sql, row.path, row.kind as NoteKind, { ...frontmatter, topics }, withTopics(row.body, topics), now, CONSOLIDATION);
+    }
+    const moved = sectionLines(gone.body, FILED).map((line) => line.replaceAll(wikilink(fromPath, from), wikilink(intoPath, into)));
+    const frontmatter: Frontmatter = { ...kept.frontmatter };
+    const area = mergeArea(frontmatter.area, [gone.frontmatter.area].flatMap((a) => (a === "mixed" ? ["work", "personal"] : typeof a === "string" ? [a] : [])));
+    if (area) frontmatter.area = area;
+    const body = withSummary(editSection(kept.body, FILED, addLines(moved)), summaryOf(kept.body) ? "" : summaryOf(gone.body));
+    writeFile(sql, intoPath, "topic", frontmatter, body, now, CONSOLIDATION);
+    deleteFile(sql, fromPath, now, CONSOLIDATION);
+  }
+  for (const { path, topics } of topic_filings) {
+    const item = readFile(sql, path);
+    if (!item || (Array.isArray(item.frontmatter.topics) && item.frontmatter.topics.length)) continue;
+    const kind = String(item.frontmatter.kind) as NoteKind;
+    writeFile(sql, path, kind, { ...item.frontmatter, topics }, withTopics(item.body, topics), now, CONSOLIDATION);
+    for (const topic of topics) {
+      fileOnPage(sql, { kind: "topic", path: topicPath(topic), name: topic, lines: [`- ${wikilink(path, noteTitle(path, item.body))}`], key: `[[${path.replace(/\.md$/, "")}|`, areas: [String(item.frontmatter.area ?? "")] }, now, CONSOLIDATION);
+    }
+  }
+  rebuildLinks(sql);
+}
+
 /** Throws away the links table and reads it back from every note's [[wikilinks]], so it can never drift from the notes. */
 export function rebuildLinks(sql: SqlStorage): void {
   sql.exec("DELETE FROM links");

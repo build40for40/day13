@@ -83,6 +83,8 @@ export const CAPTURE_TOOL: BrainTool = {
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
 };
 
+const AREA_FILTER: StringProperty = { type: "string", enum: ["work", "personal"], description: "Only this part of their life. Leave out for both." };
+
 export const RECALL_TOOL: BrainTool = {
   name: TOOL_NAMES.recall,
   title: "Search Dumpling",
@@ -92,7 +94,7 @@ export const RECALL_TOOL: BrainTool = {
     type: "object",
     additionalProperties: false,
     required: ["query"],
-    properties: { query: { type: "string", description: "A few plain words to search for." } },
+    properties: { query: { type: "string", description: "A few plain words to search for." }, area: AREA_FILTER },
   },
   annotations: readOnly,
 };
@@ -101,7 +103,6 @@ const write = { readOnlyHint: false, destructiveHint: false, idempotentHint: fal
 const change = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 
 const AREA: StringProperty = { type: "string", enum: ["work", "personal"], description: "work for their job, personal for everything else. Leave out if you can't tell." };
-const AREA_FILTER: StringProperty = { type: "string", enum: ["work", "personal"], description: "Only this part of their life. Leave out for both." };
 const PEOPLE: ListProperty = { type: "array", items: { type: "string" }, description: "Who it's for or with, only if they said: first names or plain roles like the kids. Never a surname." };
 const DETAIL: StringProperty = { type: "string", description: "Anything else they said about it, in their own words." };
 const PATH: StringProperty = { type: "string", description: "The note's path, exactly as a Dumpling tool returned it." };
@@ -302,6 +303,8 @@ If a message mixes one of these with something worth keeping, leave the sensitiv
 ## When something is done, moved or off
 
 When they say they've done something on their list, call list_tasks to find it, then update_task with status done. Use dropped when they no longer need to do it. When an event moves or is cancelled, find it with list_events, then call update_event. Don't ask first, and don't add a new to-do or event for something that's already there.
+
+What's below may list to-dos that have gone quiet. When one fits what they're talking about, ask once whether it's still needed, and drop it if they say no. Don't go through the list unprompted.
 
 ## Keep it quiet
 
