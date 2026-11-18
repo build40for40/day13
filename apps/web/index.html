@@ -29,8 +29,28 @@ h2 small { font: 400 14px var(--font); color: var(--mute) }
 .txt { flex: 1; min-width: 0 }
 .short { font-size: 20px; font-weight: 600; line-height: 1.15; letter-spacing: -.01em }
 .why { margin-top: 3px; font-size: 13px; color: var(--mute) }
-.tick { flex: none; width: 44px; height: 44px; border-radius: 50%; border: 2px solid var(--c); background: transparent; color: transparent; cursor: pointer; display: grid; place-items: center; font-size: 19px; padding: 0 }
-.tick:hover, .tick:active { background: color-mix(in srgb, var(--c) 30%, transparent); color: var(--foam) }
+.tick { flex: none; width: 62px; height: 42px; border: 0; background: none; padding: 0; cursor: pointer; -webkit-tap-highlight-color: transparent }
+.tick svg { width: 100%; height: 100%; overflow: visible; display: block }
+.tick .o { fill: transparent; stroke: var(--c); stroke-width: 5; stroke-linejoin: round; transition: fill .2s }
+.tick .x { fill: none; stroke: var(--c); stroke-width: 4 }
+.tick .pl { fill: none; stroke: var(--c); stroke-width: 3.5; stroke-linecap: round; opacity: .85 }
+.tick:hover .o, .tick:active .o { fill: color-mix(in srgb, var(--c) 30%, transparent) }
+.tick .bite { fill: var(--card); transform-box: fill-box; transform-origin: center; transform: scale(0) }
+.tick .puff circle { fill: rgba(217, 243, 238, .75); opacity: 0; transform-box: fill-box; transform-origin: center }
+.tick.eating { pointer-events: none }
+.tick.eating .o { fill: var(--c); stroke: var(--c) }
+.tick.eating .x { fill: rgba(255, 255, 255, .35) }
+.tick.eating .pl { stroke: rgba(255, 255, 255, .8) }
+.tick.eating .bite { animation: bite .3s .1s ease-out forwards }
+.tick.eating .puff circle { animation: puff .8s .15s ease-out forwards }
+.tick.eating .puff circle:nth-child(2) { animation-delay: .3s } .tick.eating .puff circle:nth-child(3) { animation-delay: .45s }
+.eaten { animation: away .45s .55s ease-in forwards }
+@keyframes bite { to { transform: scale(1) } }
+@keyframes puff { 0% { opacity: .85; transform: translateY(0) scale(.6) } 100% { opacity: 0; transform: translateY(-28px) scale(1.5) } }
+@keyframes away { to { opacity: 0; transform: translateX(26px) scale(.96) } }
+.card.fresh { animation: wobble .7s ease }
+@keyframes wobble { 0% { transform: scale(.9) rotate(-2deg); opacity: 0 } 40% { transform: scale(1.03) rotate(1.5deg); opacity: 1 } 70% { transform: rotate(-1deg) } 100% { transform: none } }
+@media (prefers-reduced-motion: reduce) { .tick.eating .bite, .tick.eating .puff circle, .eaten, .card.fresh { animation: none } .tick.eating .bite { transform: scale(1) } .eaten { opacity: 0 } }
 .group { flex-direction: column; align-items: stretch; gap: 2px; background: radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--c) 24%, transparent), transparent 65%), var(--card) }
 .gh { padding-bottom: 6px; font: italic 500 17px var(--serif) }
 .sub-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line) }
@@ -139,12 +159,31 @@ const fmtDate = (d) => new Date(base.getTime() + d * 864e5).toLocaleDateString([
 // ---------- list ----------
 const $ = (id) => document.getElementById(id)
 function h(tag, cls, ...kids) { const e = document.createElement(tag); if (cls) e.className = cls; for (const k of kids) if (k != null) e.append(k); return e }
+// Five dumplings, one per area of life, all drawn in a 120 by 80 box and shared by the ticks and the pool.
+const SHAPES = {
+  gyoza: { body: 'M8 52C6 14 114 14 112 52C98 68 22 68 8 52Z', pleats: 'M30 35l5 12M45 29l3 13M60 26v14M75 29l-3 13M90 35l-5 12', extra: [] },
+  bao: { body: 'M60 10C96 10 112 32 108 52C104 70 80 72 60 72C40 72 16 70 12 52C8 32 24 10 60 10Z', pleats: 'M60 14C52 20 50 28 54 34M60 14C68 20 70 28 66 34M60 14V34M44 24C46 30 50 34 54 36M76 24C74 30 70 34 66 36', extra: [] },
+  xiaolongbao: { body: 'M14 58C8 30 34 22 60 22C86 22 112 30 106 58C104 70 80 72 60 72C40 72 16 70 14 58Z', pleats: 'M60 24L38 32M60 24L48 40M60 24L72 40M60 24L82 32', extra: [{ d: 'M52 20C52 11 68 11 68 20C68 27 52 27 52 20Z', fill: 'body' }] },
+  wonton: { body: 'M60 14C78 18 92 34 94 52L112 60L92 70C76 74 44 74 28 70L8 60L26 52C28 34 42 18 60 14Z', pleats: 'M60 16V30M50 20L54 32M70 20L66 32', extra: [] },
+  siumai: { body: 'M22 30C22 22 98 22 98 30L96 62C96 74 24 74 24 62Z', pleats: 'M30 40V62M45 42V66M60 42V68M75 42V66M90 40V62', extra: [{ d: 'M22 30C22 38 98 38 98 30C98 22 22 22 22 30Z', fill: '#d9a066' }, { d: 'M56 30a4 4 0 1 0 8 0a4 4 0 1 0-8 0', fill: '#7fbf6a' }] },
+}
+const SHAPE_OF = { Meals: 'bao', School: 'xiaolongbao', Work: 'gyoza', Gifts: 'wonton', 'Bali trip': 'siumai', Loose: 'gyoza' }
+const shapeOf = (i) => SHAPES[SHAPE_OF[i.reef]] || SHAPES.gyoza
+const NS = 'http://www.w3.org/2000/svg'
+const fresh = new Set()
 let tab = 'plan', showDone = false, selId = null
 let toastTimer; function toast(msg) { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true }, 3400) }
 function complete(i) { const b = bubbles.find((x) => x.item === i); if (b) fx.push({ x: b.x, y: b.y, c: reef(i.reef).color, t: 0 }); i.done = true; i.doneAt = Date.now(); sync() }
 function sync() { bubbles = bubbles.filter((b) => !b.item.done); for (const i of items) if (!i.done && !bubbles.some((b) => b.item === i)) spawn(i, true); render() }
-function tick(i) { const b = h('button', 'tick', '✓'); b.setAttribute('aria-label', 'Done: ' + i.short); b.addEventListener('click', () => complete(i)); return b }
-function row(i) { const c = h('div', 'card'); c.dataset.id = i.id; c.style.setProperty('--c', reef(i.reef).color); const t = h('div', 'txt', h('div', 'short', i.short)); if (i.why) t.append(h('div', 'why', i.why)); c.append(t, tick(i)); return c }
+function tick(i) { // a small outlined dumpling in the task's own shape: tap it and it gets a bite, a puff of steam, then goes to Eaten
+  const sh = shapeOf(i), b = h('button', 'tick'); b.setAttribute('aria-label', 'Done: ' + i.short)
+  const svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', '0 0 120 80'); svg.setAttribute('aria-hidden', 'true')
+  svg.innerHTML = `<path class="o" d="${sh.body}"/>` + sh.extra.map((x) => `<path class="x" d="${x.d}"/>`).join('') + `<path class="pl" d="${sh.pleats}"/><circle class="bite" cx="104" cy="22" r="28"/><g class="puff"><circle cx="34" cy="22" r="5"/><circle cx="60" cy="14" r="6"/><circle cx="86" cy="22" r="5"/></g>`
+  b.append(svg)
+  b.addEventListener('click', () => { b.classList.add('eating'); const r = b.closest('.card, .sub-row'); if (r) r.classList.add('eaten'); setTimeout(() => complete(i), reduce ? 0 : 950) })
+  return b
+}
+function row(i) { const c = h('div', 'card' + (fresh.has(i.id) ? ' fresh' : '')); c.dataset.id = i.id; c.style.setProperty('--c', reef(i.reef).color); const t = h('div', 'txt', h('div', 'short', i.short)); if (i.why) t.append(h('div', 'why', i.why)); c.append(t, tick(i)); return c }
 function groupCard(e) {
   const same = e.items.every((x) => x.reef === e.items[0].reef), c = h('div', 'card group'); c.style.setProperty('--c', same ? reef(e.items[0].reef).color : '#d9f3ee')
   c.append(h('div', 'gh', e.theme))
@@ -158,11 +197,11 @@ function render() {
   $('plan').hidden = tab !== 'plan'; $('future').hidden = tab !== 'future'
   const day = (n) => new Date(base.getTime() + n * 864e5).toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'short' })
   $('d0').textContent = day(0); $('d1').textContent = day(1)
-  fill($('today'), items.filter(isToday), 'Today is clear.')
+  fill($('today'), items.filter(isToday), 'All eaten. Today is clear.')
   fill($('tomorrow'), items.filter(isTomorrow), 'Nothing planned. Enjoy it.')
-  const D = doneItems(), dl = $('donelabel'); dl.textContent = ''; dl.append(h('span', null, `Done · ${D.length}`), h('span', null, D.length ? (showDone ? 'Hide' : 'Show') : '')); dl.onclick = () => { showDone = !showDone; render() }
+  const D = doneItems(), dl = $('donelabel'); dl.textContent = ''; dl.append(h('span', null, `Eaten · ${D.length}`), h('span', null, D.length ? (showDone ? 'Hide' : 'Show') : '')); dl.onclick = () => { showDone = !showDone; render() }
   const dv = $('donelist'); dv.replaceChildren()
-  if (showDone) for (const i of D) { const r = h('div', 'done-row', h('span', null, i.short)); const b = h('button', 'link', 'Undo'); b.addEventListener('click', () => { i.done = false; sync() }); r.append(b); dv.append(r) }
+  if (showDone) for (const i of D) { const r = h('div', 'done-row', h('span', null, i.short)); const b = h('button', 'link', 'Put back'); b.addEventListener('click', () => { i.done = false; sync() }); r.append(b); dv.append(r) }
   const fv = $('future'); fv.replaceChildren()
   const groups = [['This week', (i) => eff(i) <= 7], ['This month', (i) => eff(i) > 7 && eff(i) <= 31], ['Later', (i) => eff(i) > 31]]
   for (const [name, test] of groups) { const L = future().filter(test); if (!L.length) continue; fv.append(h('div', 'label', name)); for (const i of L) { const r = h('div', 'up'); r.dataset.id = i.id; r.style.setProperty('--c', reef(i.reef).color); r.append(h('i'), h('span', 'n', i.short), h('span', 'd', fmtDate(i.due))); fv.append(r) } }
@@ -172,15 +211,18 @@ function render() {
 // ---------- the pool: a thin trust layer ----------
 // A little pleated dumpling, tinted by area of life. r is its half-height scale; tilt gives each one its own lean.
 function tint(hex, t) { const n = parseInt(hex.slice(1), 16), c = [n >> 16, (n >> 8) & 255, n & 255].map((v) => Math.round(v + (255 - v) * t)); return `rgb(${c})` }
-function dumpling(ctx, x, y, r, tilt, color, alpha, ring) {
-  ctx.save(); ctx.translate(x, y); ctx.rotate(tilt); ctx.globalAlpha = alpha
-  ctx.beginPath(); ctx.moveTo(-1.2 * r, .35 * r); ctx.bezierCurveTo(-1.15 * r, -1.0 * r, 1.15 * r, -1.0 * r, 1.2 * r, .35 * r); ctx.bezierCurveTo(.95 * r, 1.25 * r, -.95 * r, 1.25 * r, -1.2 * r, .35 * r); ctx.closePath()
-  const g = ctx.createLinearGradient(0, -r, 0, r); g.addColorStop(0, tint(color, .55)); g.addColorStop(.45, color); g.addColorStop(1, color); ctx.fillStyle = g; ctx.fill()
-  ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(7,22,29,.35)'; ctx.stroke()
-  ctx.strokeStyle = 'rgba(255,255,255,.6)'; ctx.lineWidth = Math.max(1, r * .1); ctx.lineCap = 'round'
-  for (const k of [-.7, -.35, 0, .35, .7]) { const px = k * r, top = .35 * r - 1.03 * r * (1 - (px / (1.2 * r)) ** 2) + .05 * r; ctx.beginPath(); ctx.moveTo(px - .1 * r, top); ctx.lineTo(px + .08 * r, top + .32 * r); ctx.stroke() }
-  if (ring) { ctx.globalAlpha = 1; ctx.strokeStyle = '#d9f3ee'; ctx.lineWidth = 1.5; ctx.stroke() }
+const P2 = new Map(); const path2 = (d) => { if (!P2.has(d)) P2.set(d, new Path2D(d)); return P2.get(d) }
+function dumpling(ctx, x, y, r, tilt, color, alpha, ring, sh) {
+  const k = r / 50; ctx.save(); ctx.translate(x, y); ctx.rotate(tilt); ctx.scale(k, k); ctx.translate(-60, -42); ctx.globalAlpha = alpha
+  const g = ctx.createLinearGradient(0, 10, 0, 74); g.addColorStop(0, tint(color, .55)); g.addColorStop(.45, color); g.addColorStop(1, color)
+  const body = path2(sh.body); ctx.fillStyle = g; ctx.fill(body); ctx.lineWidth = 1.4 / k; ctx.strokeStyle = 'rgba(7,22,29,.35)'; ctx.stroke(body)
+  for (const x2 of sh.extra) { ctx.fillStyle = x2.fill === 'body' ? g : x2.fill; ctx.fill(path2(x2.d)); ctx.stroke(path2(x2.d)) }
+  ctx.strokeStyle = 'rgba(255,255,255,.65)'; ctx.lineWidth = Math.max(2.4, 1.1 / k); ctx.lineCap = 'round'; ctx.stroke(path2(sh.pleats))
+  if (ring) { ctx.globalAlpha = 1; ctx.strokeStyle = '#d9f3ee'; ctx.lineWidth = 2 / k; ctx.stroke(body) }
   ctx.restore()
+}
+function steam(ctx, x, y, t, ph) { // a faint wisp over today's dumplings
+  for (let n = 0; n < 2; n++) { const p = (t * .45 + n * .5 + ph) % 1, sx = x + (n ? 4 : -4), sy = y - p * 12; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.bezierCurveTo(sx + 3, sy - 3, sx - 3, sy - 6, sx, sy - 9); ctx.strokeStyle = `rgba(217,243,238,${.45 * (1 - p)})`; ctx.lineWidth = 1.2; ctx.lineCap = 'round'; ctx.stroke() }
 }
 const cv = $('c'), ctx = cv.getContext('2d'), pool = $('pool')
 let W = 1, H = 1, dpr = 1, bubbles = [], fx = [], t0 = performance.now()
@@ -188,7 +230,7 @@ const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
 function size() { dpr = devicePixelRatio || 1; W = pool.clientWidth; H = pool.clientHeight; cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0) }
 new ResizeObserver(size).observe(pool); size()
 const anchor = (r) => ({ x: r.x * W, y: H * .5 })
-function spawn(item, fromTop) { const r = reef(item.reef), a = anchor(r); bubbles.push({ item, x: fromTop ? W / 2 : a.x + (Math.random() - .5) * 40, y: fromTop ? -10 : a.y + (Math.random() - .5) * 40, vx: 0, vy: 0, ph: Math.random() * 6.28, tilt: (Math.random() - .5) * .5, w: 24, h: 18 }) }
+function spawn(item, fromTop) { const r = reef(item.reef), a = anchor(r); bubbles.push({ item, x: fromTop ? W / 2 : a.x + (Math.random() - .5) * 40, y: fromTop ? -10 : a.y + (Math.random() - .5) * 40, vx: 0, vy: 0, ph: Math.random() * 6.28, tilt: (Math.random() - .5) * .5, born: fromTop ? performance.now() : 0, w: 24, h: 18 }) }
 items.filter((i) => !i.done).forEach((i) => spawn(i, false))
 function frame(tn) {
   requestAnimationFrame(frame)
@@ -212,7 +254,9 @@ function frame(tn) {
     if (!reduce) { b.vx = (b.vx + (tx - b.x) * .006) * .92; b.vy = (b.vy + (ty - b.y) * .006) * .92; b.x += b.vx; b.y += b.vy } else { b.x = tx; b.y = ty }
     b.x = Math.max(b.w / 2 + 4, Math.min(W - b.w / 2 - 4, b.x)); b.y = Math.max(14, Math.min(H - 22, b.y))
     const hl = i.id === selId, rad = (n ? 12 : 6.5 + (1 - far) * 2.5) * (hl ? 1.25 : 1)
-    dumpling(ctx, b.x, b.y, rad, b.tilt, r.color, n ? 1 : .85 - far * .3, hl)
+    const wob = b.born && !reduce ? Math.sin((tn - b.born) / 70) * .5 * Math.max(0, 1 - (tn - b.born) / 1600) : 0 // new ones wobble as they land
+    dumpling(ctx, b.x, b.y, rad, b.tilt + wob, r.color, n ? 1 : .85 - far * .3, hl, shapeOf(i))
+    if (isToday(i) && !reduce) steam(ctx, b.x, b.y - rad * .9, t, b.ph)
     if (n || hl) { ctx.font = '600 10px Inter, system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgba(7,22,29,.9)'; ctx.strokeText(i.short, b.x, b.y + rad + 12); ctx.fillStyle = hl ? '#fff' : '#d9f3ee'; ctx.fillText(i.short, b.x, b.y + rad + 12) }
   }
   fx = fx.filter((f) => (f.t += .025) < 1); for (const f of fx) { ctx.beginPath(); ctx.arc(f.x, f.y - f.t * 20, 6 + f.t * 26, 0, 6.3); ctx.strokeStyle = f.c; ctx.globalAlpha = 1 - f.t; ctx.lineWidth = 2; ctx.stroke(); ctx.globalAlpha = 1 }
@@ -236,7 +280,7 @@ function drop(text) {
     if (m) due = +m[1] * ({ day: 1, week: 7, month: 30 })[m[2].toLowerCase()]; else if (/today|tonight|asap|now/i.test(p)) due = 0; else if (/tomorrow|tmrw|urgent/i.test(p)) due = 1; else if (r.name === 'Work') due = 3
     const it = { id: uid++, reef: r.name, short: shorten(p), text: p, due, urgent: /urgent|asap/i.test(p), done: false }; items.push(it); made.push(it)
   }
-  if (!made.length) return; sync(); toast(`Filed ${made.length}: ` + made.map((i) => `${i.short} → ${isToday(i) ? 'Today' : isTomorrow(i) ? 'Tomorrow' : 'Future'}`).join(', '))
+  if (!made.length) return; made.forEach((m) => fresh.add(m.id)); sync(); fresh.clear(); toast(`Filed ${made.length}: ` + made.map((i) => `${i.short} → ${isToday(i) ? 'Today' : isTomorrow(i) ? 'Tomorrow' : 'Future'}`).join(', '))
 }
 $('f').addEventListener('submit', (e) => { e.preventDefault(); const v = $('in').value; if (v.trim()) { drop(v); $('in').value = ''; syncMic() } })
 // One box, two ways in. Empty: the button is a mic. Typing: it becomes a send arrow. Listening: it turns yellow and pulses.
