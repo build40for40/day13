@@ -117,7 +117,7 @@ const reefs = [
   { name: 'Loose', color: '#9fb6c8', x: .5, kw: /$^/ },
 ]
 const reef = (n) => reefs.find((r) => r.name === n)
-const base = new Date(2026, 10, 18) // Wednesday, today in the example
+let base = new Date(2026, 10, 18) // Wednesday, today in the example. When connected to the brain, it's the real today.
 let uid = 1; const now = Date.now()
 let items = [
   { reef: 'Work', short: 'Safety summary', text: 'Send the safety summary to Dad', due: 0 },
@@ -147,7 +147,7 @@ const openItems = () => items.filter((i) => !i.done)
 const isToday = (i) => !i.done && eff(i) <= 0
 const isTomorrow = (i) => !i.done && eff(i) === 1
 const future = () => openItems().filter((i) => eff(i) >= 2).sort((a, b) => eff(a) - eff(b))
-const doneItems = () => items.filter((i) => i.done).sort((a, b) => b.doneAt - a.doneAt)
+const doneItems = () => items.filter((i) => i.done).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0))
 function entries(list) { // one entry per theme, so kids' and grown-ups' meal prep count once
   const out = [], by = new Map()
   for (const i of list) { if (i.theme && list.filter((x) => x.theme === i.theme).length > 1) { if (!by.has(i.theme)) { const e = { items: [], theme: i.theme }; by.set(i.theme, e); out.push(e) } by.get(i.theme).items.push(i) } else out.push({ items: [i] }) }
@@ -173,7 +173,8 @@ const NS = 'http://www.w3.org/2000/svg'
 const fresh = new Set()
 let tab = 'plan', showDone = false, selId = null
 let toastTimer; function toast(msg) { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true }, 3400) }
-function complete(i) { const b = bubbles.find((x) => x.item === i); if (b) fx.push({ x: b.x, y: b.y, c: reef(i.reef).color, t: 0 }); i.done = true; i.doneAt = Date.now(); sync() }
+function complete(i) { const b = bubbles.find((x) => x.item === i); if (b) fx.push({ x: b.x, y: b.y, c: reef(i.reef).color, t: 0 }); i.done = true; i.doneAt = Date.now(); sync()
+  if (window.DumplingBrain?.connected && i.path) window.DumplingBrain.setStatus(i.path, 'done').catch(() => { i.done = false; sync() }) }
 function sync() { bubbles = bubbles.filter((b) => !b.item.done); for (const i of items) if (!i.done && !bubbles.some((b) => b.item === i)) spawn(i, true); render() }
 function tick(i) { // a small outlined dumpling in the task's own shape: tap it and it gets a bite, a puff of steam, then goes to Eaten
   const sh = shapeOf(i), b = h('button', 'tick'); b.setAttribute('aria-label', 'Done: ' + i.short)
@@ -201,7 +202,7 @@ function render() {
   fill($('tomorrow'), items.filter(isTomorrow), 'Nothing planned. Enjoy it.')
   const D = doneItems(), dl = $('donelabel'); dl.textContent = ''; dl.append(h('span', null, `Eaten · ${D.length}`), h('span', null, D.length ? (showDone ? 'Hide' : 'Show') : '')); dl.onclick = () => { showDone = !showDone; render() }
   const dv = $('donelist'); dv.replaceChildren()
-  if (showDone) for (const i of D) { const r = h('div', 'done-row', h('span', null, i.short)); const b = h('button', 'link', 'Put back'); b.addEventListener('click', () => { i.done = false; sync() }); r.append(b); dv.append(r) }
+  if (showDone) for (const i of D) { const r = h('div', 'done-row', h('span', null, i.short)); const b = h('button', 'link', 'Put back'); b.addEventListener('click', () => { i.done = false; sync(); if (window.DumplingBrain?.connected && i.path) window.DumplingBrain.setStatus(i.path, 'open').catch(() => { i.done = true; sync() }) }); r.append(b); dv.append(r) }
   const fv = $('future'); fv.replaceChildren()
   const groups = [['This week', (i) => eff(i) <= 7], ['This month', (i) => eff(i) > 7 && eff(i) <= 31], ['Later', (i) => eff(i) > 31]]
   for (const [name, test] of groups) { const L = future().filter(test); if (!L.length) continue; fv.append(h('div', 'label', name)); for (const i of L) { const r = h('div', 'up'); r.dataset.id = i.id; r.style.setProperty('--c', reef(i.reef).color); r.append(h('i'), h('span', 'n', i.short), h('span', 'd', fmtDate(i.due))); fv.append(r) } }
@@ -274,6 +275,7 @@ cv.addEventListener('pointerdown', (e) => {
 const filler = new Set('a an the to for of and or with at on in my me i we need needs have has must should remember dont forget please tomorrow today tonight urgent asap now get do make send is are was be it this that some about before after by up out from really just also then wants want'.split(' '))
 function shorten(text) { const w = text.replace(/\bin \d+ (day|week|month)s?\b/ig, '').replace(/[^\w' -]/g, ' ').split(/\s+/).filter((x) => x && !filler.has(x.toLowerCase())); const o = w.slice(0, 2).join(' ') || text.slice(0, 14); return o.charAt(0).toUpperCase() + o.slice(1) }
 function drop(text) {
+  if (window.DumplingBrain?.connected) return window.DumplingBrain.dump(text) // connected: the brain files it, then it shows up here
   const made = []
   for (const p of text.split(/[.\n;]+/).map((x) => x.trim()).filter(Boolean)) {
     const r = reefs.find((x) => x.kw.test(p)) || reef('Loose'); let due = 7; const m = p.match(/in (\d+) (day|week|month)s?/i)
@@ -282,7 +284,7 @@ function drop(text) {
   }
   if (!made.length) return; made.forEach((m) => fresh.add(m.id)); sync(); fresh.clear(); toast(`Filed ${made.length}: ` + made.map((i) => `${i.short} → ${isToday(i) ? 'Today' : isTomorrow(i) ? 'Tomorrow' : 'Future'}`).join(', '))
 }
-$('f').addEventListener('submit', (e) => { e.preventDefault(); const v = $('in').value; if (v.trim()) { drop(v); $('in').value = ''; syncMic() } })
+$('f').addEventListener('submit', (e) => { e.preventDefault(); const v = $('in').value; if (v.trim()) { const sent = drop(v); $('in').value = ''; syncMic(); if (sent && sent.catch) sent.catch(() => { $('in').value = v; syncMic() }) } })
 // An empty composer opens the private voice preview. Typed text still files through the prototype.
 const VOICE_PREVIEW = 'https://elevenlabs.io/app/agents/agents/agent_3401m7q8xy4xevs910n2j7t3w5yf/preview'
 function syncMic() {
@@ -300,6 +302,17 @@ $('mic').addEventListener('click', () => {
 })
 syncMic()
 render()
+// Hooks for src/connect.ts, which loads real tasks from the brain when the page is opened with #connect.
+window.dumpling = {
+  toast,
+  setItems(list, todayIso) {
+    base = new Date(+todayIso.slice(0, 4), +todayIso.slice(5, 7) - 1, +todayIso.slice(8, 10))
+    items = list.map((i) => ({ id: uid++, ...i }))
+    bubbles = []; items.filter((i) => !i.done).forEach((i) => spawn(i, false))
+    render()
+  },
+}
 </script>
+<script type="module" src="/src/connect.ts"></script>
 </body>
 </html>

@@ -11,4 +11,14 @@ pnpm --filter @day13/web fake   # against the fake brain
 pnpm --filter @day13/web test && pnpm --filter @day13/web typecheck
 ```
 
-Not wired yet: WorkOS sign-in, and the brain behind the list (`src/brain.ts` is ready for it). Deploys go through CI: `.github/workflows/web-deploy.yml` builds `dist/dumpling` and deploys it as a static-assets Worker on every push to `main` that touches `apps/web`.
+## Connecting to the brain
+
+Open the page with `#connect` and paste a WorkOS access token (demo only: it's kept in this tab's session storage and expires). The page then:
+
+- loads the brain's tasks and events (`GET /notes?kind=task` and `event`) and lays them out in `src/plan.ts`: Today is everything due today or overdue, filled up to ten with undated or soon-due tasks aiming for mostly work on weekdays and mostly personal at weekends. Importance and due dates come first. Tomorrow is what's dated tomorrow, and Future is the rest;
+- saves a tick with `PATCH /notes/<path>` (`status: done`), and Put back with `status: open`;
+- sends typed text as a short conversation (`POST /sessions`, a turn, then end), which the brain files into tasks once it ends. The new tasks show up after it's filed.
+
+Without `#connect` it's the example data. `src/plan.ts` is pure and tested, so the rules can change in one place. This needs the brain to file due dates, importance and area, and to allow `PATCH /notes`. Until then every task is undated.
+
+Not wired yet: a proper WorkOS sign-in (a pasted token is the only way in). Deploys go through CI: `.github/workflows/web-deploy.yml` builds `dist/dumpling` and deploys it as a static-assets Worker on every push to `main` that touches `apps/web`.
