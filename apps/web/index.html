@@ -55,7 +55,13 @@ h2 small { font: 400 14px var(--font); color: var(--mute) }
 /* A slow, soft yellow glow: the mic is the main way in. */
 .mic { box-shadow: 0 0 0 1px rgba(255, 211, 107, .35), 0 0 14px rgba(255, 211, 107, .28), 0 0 32px rgba(255, 211, 107, .14); animation: glow 3.6s ease-in-out infinite }
 @keyframes glow { 50% { box-shadow: 0 0 0 1px rgba(255, 211, 107, .5), 0 0 20px rgba(255, 211, 107, .42), 0 0 42px rgba(255, 211, 107, .22) } }
-@media (prefers-reduced-motion: reduce) { .mic { animation: none } }
+.mic .arrow { display: none }
+.mic.send .arrow { display: block }
+.mic.send .mk { display: none }
+.mic.send { animation: none; box-shadow: none }
+.mic.listening { background: var(--gold); animation: listen 1.1s ease-in-out infinite }
+@keyframes listen { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 211, 107, .55) } 50% { box-shadow: 0 0 0 14px rgba(255, 211, 107, 0) } }
+@media (prefers-reduced-motion: reduce) { .mic, .mic.listening { animation: none } }
 .toast { position: fixed; left: 16px; right: 16px; bottom: calc(90px + env(safe-area-inset-bottom, 0px)); max-width: 488px; margin: 0 auto; background: var(--foam); color: var(--water); border-radius: 14px; padding: 12px 14px; font-size: 14px; font-weight: 500; z-index: 5 }
 .toast[hidden] { display: none }
 .fine { color: var(--mute); font-size: 11px; margin: 26px 0 0 }
@@ -76,7 +82,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--gold); outl
     <p class="fine">Example data, made up for the Day 13 mind dump.</p>
   </div>
   <div class="bar pad">
-    <form id="f"><input id="in" autocomplete="off" placeholder="Dump anything. It gets filed." aria-label="Dump anything"><button type="button" class="mic" id="mic" aria-label="Talk (sample)"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button></form>
+    <form id="f"><input id="in" autocomplete="off" placeholder="Type or tap the mic to talk" aria-label="Dump anything"><button type="button" class="mic" id="mic" aria-label="Tap to talk"><svg class="mk" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><svg class="arrow" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button></form>
   </div>
   <div class="toast" id="toast" hidden></div>
 </div>
@@ -221,8 +227,19 @@ function drop(text) {
   }
   if (!made.length) return; sync(); toast(`Filed ${made.length}: ` + made.map((i) => `${i.short} → ${isToday(i) ? 'Today' : isTomorrow(i) ? 'Tomorrow' : 'Future'}`).join(', '))
 }
-$('f').addEventListener('submit', (e) => { e.preventDefault(); const v = $('in').value; if (v.trim()) { drop(v); $('in').value = '' } })
-$('mic').addEventListener('click', () => { $('in').value = 'Call the dentist tomorrow. Sam wants a dinosaur cake in 10 days. Urgent: change Friday lunch, the kids have pasta again.'; toast('Sample of what you might say. Press Enter to file it.'); $('in').focus() })
+$('f').addEventListener('submit', (e) => { e.preventDefault(); const v = $('in').value; if (v.trim()) { drop(v); $('in').value = ''; syncMic() } })
+// One box, two ways in. Empty: the button is a mic. Typing: it becomes a send arrow. Listening: it turns yellow and pulses.
+const PH = 'Type or tap the mic to talk', SAMPLE = 'Call the dentist tomorrow. Sam wants a dinosaur cake in 10 days. Urgent: change Friday lunch, the kids have pasta again.'
+let listening = null
+function syncMic() { const has = $('in').value.trim().length > 0; $('mic').classList.toggle('send', has && !listening); $('mic').setAttribute('aria-label', has ? 'File it' : 'Tap to talk') }
+$('in').addEventListener('input', syncMic)
+$('mic').addEventListener('click', () => {
+  const mic = $('mic'), inp = $('in')
+  if (listening) { clearTimeout(listening); listening = null; mic.classList.remove('listening'); inp.placeholder = PH; syncMic(); return }
+  if (inp.value.trim()) { $('f').requestSubmit(); return }
+  mic.classList.add('listening'); inp.placeholder = 'Listening\u2026 tap again to stop'; mic.setAttribute('aria-label', 'Stop listening')
+  listening = setTimeout(() => { listening = null; mic.classList.remove('listening'); inp.placeholder = PH; inp.value = SAMPLE; syncMic(); toast('Demo only: voice would write your words here. Tap the arrow to file them.') }, 2200)
+})
 render()
 </script>
 </body>
