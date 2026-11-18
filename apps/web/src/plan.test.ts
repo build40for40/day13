@@ -27,6 +27,8 @@ describe('small helpers', () => {
     expect(reefFor('Defrost the soup', {})).toBe('Meals')
     expect(reefFor('Renew passports', { topics: ['bali trip'] })).toBe('Bali trip')
     expect(reefFor('Reply to the supplier', { area: 'work' })).toBe('Work')
+    expect(reefFor('Call the dentist', { area: 'personal' })).toBe('Home')
+    expect(reefFor('Clean the house', { area: 'personal' })).toBe('Home')
     expect(reefFor('Something odd', { area: 'personal' })).toBe('Loose')
   })
   it("gives today's date in London", () => {

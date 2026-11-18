@@ -8,26 +8,34 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@1,9..144,500&family=Inter:wght@400;500;600&display=swap">
 <style>
 [hidden] { display: none !important }
-/* Layout: a thin pool on top as the trust layer. Then Today, then Tomorrow. Future is its own tab. Nothing red anywhere: colour only says which part of life it belongs to. Single dark look by choice. */
-:root { color-scheme: dark; --water: #07161d; --deep: #0b2c36; --card: #0f2a34; --foam: #d9f3ee; --mute: #86aaaa; --line: rgba(217, 243, 238, .13); --gold: #ffd36b; --font: 'Inter', system-ui, sans-serif; --serif: 'Fraunces', Georgia, serif }
+/* Layout: a thin pool on top as the trust layer. Then Today, then Tomorrow. Future is its own tab. Dumpling colours show urgency; shapes identify each part of life. A soft sky-blue and teal backdrop keeps the task space calm. */
+:root { color-scheme: light; --water: #93c2cb; --deep: #c1dfed; --card: rgba(245, 252, 253, .78); --foam: #214758; --mute: #486a7a; --line: rgba(49, 99, 118, .18); --gold: #ffd36b; --font: 'Inter', system-ui, sans-serif; --serif: 'Fraunces', Georgia, serif }
 * { box-sizing: border-box }
 html, body { height: 100% }
 body { margin: 0; background: var(--water); color: var(--foam); font-family: var(--font); overflow: hidden }
-.phone { height: 100%; max-width: 520px; margin: 0 auto; display: flex; flex-direction: column; background: linear-gradient(180deg, var(--deep), var(--water) 55%) }
+.phone { height: 100%; max-width: 520px; margin: 0 auto; display: flex; flex-direction: column; background: radial-gradient(ellipse at 8% 4%, rgba(255,255,255,.56), transparent 48%), linear-gradient(165deg, var(--deep), #acd4df 45%, var(--water)) }
 .pad { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)) }
 #pool { position: relative; flex: none; height: clamp(150px, 20vh, 200px); margin-top: env(safe-area-inset-top, 0px) }
-canvas { position: absolute; inset: 0; width: 100%; height: 100% }
+canvas { touch-action: none; cursor: grab; position: absolute; inset: 0; width: 100%; height: 100% }
 .seg { display: flex; gap: 4px; padding-block: 8px 4px }
 .seg button { flex: 1; border: 1px solid var(--line); background: transparent; color: var(--mute); border-radius: 999px; padding: 9px 0; font: 500 14px var(--font); cursor: pointer }
-.seg button[aria-pressed=true] { background: var(--foam); color: var(--water); border-color: var(--foam) }
+.seg button[aria-pressed=true] { background: #f1fafc; color: var(--foam); border-color: rgba(255,255,255,.7) }
+.filters { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 10px; padding-bottom: 2px }
+.filters button { border: 1px solid var(--line); border-radius: 999px; padding: 7px 11px; background: rgba(245,252,253,.35); color: var(--foam); font: 500 12px var(--font); cursor: pointer; min-height: 34px }
+.filters button[aria-pressed=true] { background: var(--foam); border-color: var(--foam); color: #f1fafc }
+button.category { cursor: pointer }
+button.category:hover { background: color-mix(in srgb, var(--category) 16%, white) }
 .scroll { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 24px }
-h2 { font: italic 500 32px/1.05 var(--serif); margin: 22px 0 0; display: flex; align-items: baseline; gap: 10px }
+h2 { font: 600 28px/1.15 var(--font); letter-spacing: -.02em; margin: 22px 0 0; display: flex; align-items: baseline; gap: 10px }
 h2 small { font: 400 14px var(--font); color: var(--mute) }
 .stack { display: flex; flex-direction: column; gap: 10px; margin-top: 14px }
-.card { display: flex; align-items: center; gap: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 22px; padding: 15px 14px 15px 20px; transition: background .2s }
-.card.hl, .up.hl { background: #16384a }
+.card { display: flex; align-items: center; gap: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 22px; padding: 15px 14px 15px 20px; box-shadow: 0 4px 16px rgba(51, 101, 125, .045); transition: background .2s }
+.card.hl, .up.hl { background: #e2f4f8 }
 .txt { flex: 1; min-width: 0 }
 .short { font-size: 20px; font-weight: 600; line-height: 1.15; letter-spacing: -.01em }
+.category { display: inline-flex; align-items: center; gap: 5px; width: fit-content; margin-top: 7px; padding: 3px 8px; border: 1px solid color-mix(in srgb, var(--category) 22%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--category) 8%, white); color: var(--category); font: 500 11px/1.2 var(--font); white-space: nowrap }
+.category::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor }
+.up .category { margin-top: 5px }
 .why { margin-top: 3px; font-size: 13px; color: var(--mute) }
 .tick { flex: none; width: 62px; height: 42px; border: 0; background: none; padding: 0; cursor: pointer; -webkit-tap-highlight-color: transparent }
 .tick svg { width: 100%; height: 100%; overflow: visible; display: block }
@@ -66,11 +74,11 @@ h2 small { font: 400 14px var(--font); color: var(--mute) }
 .done-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; color: var(--mute); font-size: 15px }
 .done-row span { flex: 1; text-decoration: line-through }
 .link { background: transparent; border: 0; color: var(--mute); font: 500 12px var(--font); text-decoration: underline; cursor: pointer; padding: 4px 0 }
-.bar { flex: none; padding-top: 10px; padding-bottom: max(12px, env(safe-area-inset-bottom, 0px)); background: rgba(7, 22, 29, .96); border-top: 1px solid var(--line) }
-.bar form { display: flex; gap: 8px; align-items: center; background: #0d2b36; border: 1px solid var(--line); border-radius: 999px; padding: 6px 6px 6px 18px }
+.bar { flex: none; padding-top: 10px; padding-bottom: max(12px, env(safe-area-inset-bottom, 0px)); background: rgba(188, 220, 230, .94); border-top: 1px solid var(--line) }
+.bar form { display: flex; gap: 8px; align-items: center; background: rgba(247, 253, 255, .74); border: 1px solid var(--line); border-radius: 999px; padding: 6px 6px 6px 18px }
 .bar input { flex: 1; min-width: 0; background: transparent; border: 0; color: var(--foam); font: 16px var(--font); outline: none; padding: 8px 0 }
 .bar input::placeholder { color: var(--mute) }
-.mic { flex: none; width: 48px; height: 48px; border-radius: 50%; border: 0; background: var(--foam); color: var(--water); display: grid; place-items: center; cursor: pointer }
+.mic { flex: none; width: 48px; height: 48px; border-radius: 50%; border: 0; background: #eaf8fc; color: var(--foam); display: grid; place-items: center; cursor: pointer }
 .mic svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round }
 /* A slow, soft yellow glow: the mic is the main way in. */
 .mic { box-shadow: 0 0 0 1px rgba(255, 211, 107, .35), 0 0 14px rgba(255, 211, 107, .28), 0 0 32px rgba(255, 211, 107, .14); animation: glow 3.6s ease-in-out infinite }
@@ -82,7 +90,7 @@ h2 small { font: 400 14px var(--font); color: var(--mute) }
 .mic.listening { background: var(--gold); animation: listen 1.1s ease-in-out infinite }
 @keyframes listen { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 211, 107, .55) } 50% { box-shadow: 0 0 0 14px rgba(255, 211, 107, 0) } }
 @media (prefers-reduced-motion: reduce) { .mic, .mic.listening { animation: none } }
-.toast { position: fixed; left: 16px; right: 16px; bottom: calc(90px + env(safe-area-inset-bottom, 0px)); max-width: 488px; margin: 0 auto; background: var(--foam); color: var(--water); border-radius: 14px; padding: 12px 14px; font-size: 14px; font-weight: 500; z-index: 5 }
+.toast { position: fixed; left: 16px; right: 16px; bottom: calc(90px + env(safe-area-inset-bottom, 0px)); max-width: 488px; margin: 0 auto; background: #f0fafc; color: var(--foam); border-radius: 14px; padding: 12px 14px; font-size: 14px; font-weight: 500; z-index: 5 }
 .toast[hidden] { display: none }
 .fine { color: var(--mute); font-size: 11px; margin: 26px 0 0 }
 .voice-auth { display: flex; justify-content: flex-end; padding-block: 6px }
@@ -104,9 +112,10 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--gold); outl
 </head>
 <body>
 <div class="phone">
-  <div id="pool" role="img" aria-label="Everything the brain remembers, as colour-coded dumplings"><canvas id="c"></canvas></div>
+  <div id="pool" role="img" aria-label="Everything the brain remembers, as dumplings: red for urgent, amber for due soon, green for less urgent"><canvas id="c"></canvas></div>
   <div class="voice-auth pad"><button type="button" id="voice-sign-in">Sign in with WorkOS</button></div>
   <div class="seg pad" id="seg"></div>
+  <div class="filters pad" id="filters" role="group" aria-label="Filter tasks by category"></div>
   <div class="scroll pad" id="scroll">
     <div id="plan">
       <h2>Today <small id="d0"></small></h2><div class="stack" id="today"></div>
@@ -121,7 +130,6 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--gold); outl
   </div>
   <div id="voice-controls" hidden>
     <p id="voice-status" role="status" aria-live="polite"></p>
-    <a id="voice-login" target="_blank" rel="noopener noreferrer" hidden>Open WorkOS sign-in</a>
     <button type="button" id="voice-mute" hidden>Mute microphone</button>
     <a id="voice-preview" href="https://elevenlabs.io/app/agents/agents/agent_3401m7q8xy4xevs910n2j7t3w5yf/preview" target="_blank" rel="noopener noreferrer" hidden>Open ElevenLabs Preview</a>
   </div>
@@ -138,22 +146,50 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--gold); outl
     <div id="task-move-error" role="alert"></div>
   </form>
 </dialog>
-<script>
+<script type="module">
+import { completionMatches } from '/src/completion.ts'
+import { separateDumplings } from '/src/pool-physics.ts'
 const reefs = [
   { name: 'Meals', color: '#7be0b0', x: .13, kw: /pasta|dinner|meal|menu|recipe|rice|cook|lunch|snack|soup|cake|groceries/i },
   { name: 'School', color: '#ffd36b', x: .33, kw: /costume|school|teacher|permission|museum/i },
-  { name: 'Work', color: '#62d6e8', x: .53, kw: /report|client|meeting|safety|invoice|email|supplier|dentist|call/i },
+  { name: 'Home', color: '#d8b3a0', x: .43, kw: /home|house|clean|laundry|dentist|doctor|family|garden|repair|washing/i },
+  { name: 'Work', color: '#62d6e8', x: .53, kw: /report|client|meeting|safety|invoice|email|supplier|work|office/i },
   { name: 'Gifts', color: '#c3a6ff', x: .71, kw: /gift|birthday|present|toy|puzzle/i },
   { name: 'Bali trip', color: '#8da2ff', x: .89, kw: /bali|villa|flight|passport|hotel|visa|ubud/i },
   { name: 'Loose', color: '#9fb6c8', x: .5, kw: /$^/ },
 ]
 const reef = (n) => reefs.find((r) => r.name === n)
-let base = new Date(2026, 10, 18) // Wednesday, today in the example. When connected to the brain, it's the real today.
+const CATEGORIES = {
+  Work: { label: 'Work', color: '#28617f' },
+  Home: { label: 'Home', color: '#79505f' },
+  Meals: { label: 'Food', color: '#386b55' },
+  School: { label: 'Home · School', color: '#79505f' },
+  Gifts: { label: 'Home · Gifts', color: '#79505f' },
+  'Bali trip': { label: 'Travel', color: '#5c5d91' },
+  Loose: { label: 'Personal', color: '#526a75' },
+}
+const categoryOf = (i) => CATEGORIES[i.reef] || CATEGORIES.Loose
+const categoryKey = (i) => categoryOf(i).label.split(' · ')[0]
+const categoryNames = ['All', 'Work', 'Home', 'Food', 'Travel', 'Personal']
+let selectedCategory = 'All'
+const matchesCategory = (i) => selectedCategory === 'All' || categoryKey(i) === selectedCategory
+function setCategory(name) {
+  selectedCategory = name; selId = null; render(); $('scroll').scrollTop = 0
+  $('filters').querySelector(`[data-category="${name}"]`).focus({ preventScroll: true })
+}
+function categoryTag(i) {
+  const category = categoryOf(i), tag = h('button', 'category', category.label)
+  tag.type = 'button'; tag.title = `Filter by ${categoryKey(i)}`
+  tag.addEventListener('click', () => setCategory(categoryKey(i)))
+  tag.style.setProperty('--category', category.color)
+  return tag
+}
+let base = new Date(2026, 10, 18) // Wednesday, today in the example
 let uid = 1; const now = Date.now()
 const exampleItems = [
   { reef: 'Work', short: 'Safety summary', text: 'Send the safety summary to Dad', due: 0 },
   { reef: 'Work', short: 'Supplier reply', text: 'Reply to the equipment supplier', due: 0 },
-  { reef: 'Work', short: 'Call dentist', text: 'Call the dentist for Sam’s check-up', due: 0 },
+  { reef: 'Home', short: 'Call dentist', text: 'Call the dentist for Sam’s check-up', due: 0 },
   { reef: 'Meals', short: 'Swap dinner', text: 'Swap Thursday dinner, the school is serving pasta', due: 1, urgent: true, why: 'School has pasta' },
   { reef: 'School', short: 'Costume', text: 'Pick up the costume for Friday’s school event', due: 2, lead: 1, why: 'Needed Friday' },
   { reef: 'Meals', short: 'Kids’ lunchboxes', text: 'Pack the kids’ lunchboxes, no nuts', due: 1, theme: 'Meal prep', who: 'Kids' },
@@ -174,6 +210,7 @@ let items = exampleItems.map((i) => ({ id: uid++, done: false, ...i }))
 
 // ---------- grouping ----------
 const eff = (i) => i.due - (i.lead || 0)
+const urgency = (i) => i.urgent || eff(i) <= 0 ? { label: 'Urgent', color: '#c74255' } : eff(i) <= 7 ? { label: 'Due soon', color: '#a76908' } : { label: 'Less urgent', color: '#238367' }
 const rank = (i) => (i.urgent ? 50 : 0) - eff(i) // urgent first, then soonest
 const openItems = () => items.filter((i) => !i.done)
 const isToday = (i) => !i.done && eff(i) <= 0
@@ -199,21 +236,23 @@ const SHAPES = {
   wonton: { body: 'M60 14C78 18 92 34 94 52L112 60L92 70C76 74 44 74 28 70L8 60L26 52C28 34 42 18 60 14Z', pleats: 'M60 16V30M50 20L54 32M70 20L66 32', extra: [] },
   siumai: { body: 'M22 30C22 22 98 22 98 30L96 62C96 74 24 74 24 62Z', pleats: 'M30 40V62M45 42V66M60 42V68M75 42V66M90 40V62', extra: [{ d: 'M22 30C22 38 98 38 98 30C98 22 22 22 22 30Z', fill: '#d9a066' }, { d: 'M56 30a4 4 0 1 0 8 0a4 4 0 1 0-8 0', fill: '#7fbf6a' }] },
 }
-const SHAPE_OF = { Meals: 'bao', School: 'xiaolongbao', Work: 'gyoza', Gifts: 'wonton', 'Bali trip': 'siumai', Loose: 'gyoza' }
+const SHAPE_OF = { Meals: 'bao', Home: 'wonton', School: 'xiaolongbao', Work: 'gyoza', Gifts: 'wonton', 'Bali trip': 'siumai', Loose: 'gyoza' }
 const shapeOf = (i) => SHAPES[SHAPE_OF[i.reef]] || SHAPES.gyoza
 const NS = 'http://www.w3.org/2000/svg'
 const fresh = new Set()
 let tab = 'plan', showDone = false, selId = null
 let toastTimer; function toast(msg) { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true }, 3400) }
-function complete(i) { const b = bubbles.find((x) => x.item === i); if (b) fx.push({ x: b.x, y: b.y, c: reef(i.reef).color, t: 0 }); i.done = true; i.doneAt = Date.now(); sync()
-  if (window.DumplingBrain?.connected && i.path) window.DumplingBrain.setStatus(i.path, 'done').catch(() => { i.done = false; sync() }) }
+function complete(i) { if (i.done) return; const b = bubbles.find((x) => x.item === i); if (b) fx.push({ x: b.x, y: b.y, c: urgency(i).color, shape: shapeOf(i), tilt: b.tilt, r: isToday(i) || isTomorrow(i) ? 12 : 8, start: performance.now() }); i.done = true; i.doneAt = Date.now(); sync()
+  if (window.DumplingBrain?.connected && i.path) window.DumplingBrain.setStatus(i.path, 'done').catch(() => { i.done = false; sync() })
+}
+
 function sync() { bubbles = bubbles.filter((b) => !b.item.done); for (const i of items) if (!i.done && !bubbles.some((b) => b.item === i)) spawn(i, true); render() }
 function tick(i) { // a small outlined dumpling in the task's own shape: tap it and it gets a bite, a puff of steam, then goes to Eaten
-  const sh = shapeOf(i), b = h('button', 'tick'); b.setAttribute('aria-label', 'Done: ' + i.short)
+  const sh = shapeOf(i), b = h('button', 'tick'); b.setAttribute('aria-label', 'Done: ' + i.short); b.style.setProperty('--c', urgency(i).color); b.title = `${categoryOf(i).label} · ${urgency(i).label}`
   const svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', '0 0 120 80'); svg.setAttribute('aria-hidden', 'true')
   svg.innerHTML = `<path class="o" d="${sh.body}"/>` + sh.extra.map((x) => `<path class="x" d="${x.d}"/>`).join('') + `<path class="pl" d="${sh.pleats}"/><circle class="bite" cx="104" cy="22" r="28"/><g class="puff"><circle cx="34" cy="22" r="5"/><circle cx="60" cy="14" r="6"/><circle cx="86" cy="22" r="5"/></g>`
   b.append(svg)
-  b.addEventListener('click', () => { b.classList.add('eating'); const r = b.closest('.card, .sub-row'); if (r) r.classList.add('eaten'); setTimeout(() => complete(i), reduce ? 0 : 950) })
+  b.addEventListener('click', () => { b.classList.add('eating'); const r = b.closest('.card, .sub-row'); if (r) r.classList.add('eaten'); setTimeout(() => complete(i), reduce ? 0 : 180) })
   return b
 }
 let taskToMove
@@ -260,33 +299,40 @@ $('task-move-form').addEventListener('submit', async (event) => {
     $('task-move-cancel').disabled = false
   }
 })
-function row(i) { const c = h('div', 'card' + (fresh.has(i.id) ? ' fresh' : '')); c.dataset.id = i.id; c.style.setProperty('--c', reef(i.reef).color); const t = h('div', 'txt', h('div', 'short', i.short)); if (i.why) t.append(h('div', 'why', i.why)); c.append(t, ...[moveButton(i), tick(i)].filter(Boolean)); return c }
+function row(i) { const c = h('div', 'card' + (fresh.has(i.id) ? ' fresh' : '')); c.dataset.id = i.id; c.style.setProperty('--c', reef(i.reef).color); const t = h('div', 'txt', h('div', 'short', i.short)); if (i.why) t.append(h('div', 'why', i.why)); t.append(categoryTag(i)); c.append(t, ...[moveButton(i), tick(i)].filter(Boolean)); return c }
 function groupCard(e) {
   const same = e.items.every((x) => x.reef === e.items[0].reef), c = h('div', 'card group'); c.style.setProperty('--c', same ? reef(e.items[0].reef).color : '#d9f3ee')
   c.append(h('div', 'gh', e.theme))
-  for (const i of e.items) { const r = h('div', 'sub-row'); r.dataset.id = i.id; r.style.setProperty('--c', reef(i.reef).color); if (i.who) r.append(h('span', 'who', i.who)); r.append(h('div', 'txt', h('div', 'short', i.short)), ...[moveButton(i), tick(i)].filter(Boolean)); c.append(r) }
+  for (const i of e.items) { const r = h('div', 'sub-row'); r.dataset.id = i.id; r.style.setProperty('--c', reef(i.reef).color); if (i.who) r.append(h('span', 'who', i.who)); r.append(h('div', 'txt', h('div', 'short', i.short), categoryTag(i)), ...[moveButton(i), tick(i)].filter(Boolean)); c.append(r) }
   return c
 }
 function fill(el, list, emptyText) { el.replaceChildren(); const es = entries(list); es.forEach((e) => el.append(e.items.length > 1 ? groupCard(e) : row(e.items[0]))); if (!es.length) el.append(h('p', 'empty', emptyText)) }
 function render() {
+  const filters = $('filters')
+  if (!filters.childElementCount) for (const name of categoryNames) {
+    const button = h('button', null, name); button.type = 'button'; button.dataset.category = name
+    button.addEventListener('click', () => setCategory(name)); filters.append(button)
+  }
+  for (const button of filters.children) button.setAttribute('aria-pressed', String(button.dataset.category === selectedCategory))
+  const empty = (fallback) => selectedCategory === 'All' ? fallback : `No ${selectedCategory.toLowerCase()} tasks here.`
   const seg = $('seg'); seg.replaceChildren()
   for (const [id, label] of [['plan', 'Today & tomorrow'], ['future', 'Future']]) { const b = h('button', null, label); b.setAttribute('aria-pressed', String(tab === id)); b.addEventListener('click', () => { tab = id; render() }); seg.append(b) }
   $('plan').hidden = tab !== 'plan'; $('future').hidden = tab !== 'future'
   const day = (n) => new Date(base.getTime() + n * 864e5).toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'short' })
   $('d0').textContent = day(0); $('d1').textContent = day(1)
-  fill($('today'), items.filter(isToday), 'All eaten. Today is clear.')
-  fill($('tomorrow'), items.filter(isTomorrow), 'Nothing planned. Enjoy it.')
-  const D = doneItems(), dl = $('donelabel'); dl.textContent = ''; dl.append(h('span', null, `Eaten · ${D.length}`), h('span', null, D.length ? (showDone ? 'Hide' : 'Show') : '')); dl.onclick = () => { showDone = !showDone; render() }
+  fill($('today'), items.filter((i) => isToday(i) && matchesCategory(i)), empty('All eaten. Today is clear.'))
+  fill($('tomorrow'), items.filter((i) => isTomorrow(i) && matchesCategory(i)), empty('Nothing planned. Enjoy it.'))
+  const D = doneItems().filter(matchesCategory), dl = $('donelabel'); dl.textContent = ''; dl.append(h('span', null, `Eaten · ${D.length}`), h('span', null, D.length ? (showDone ? 'Hide' : 'Show') : '')); dl.onclick = () => { showDone = !showDone; render() }
   const dv = $('donelist'); dv.replaceChildren()
   if (showDone) for (const i of D) { const r = h('div', 'done-row', h('span', null, i.short)); const b = h('button', 'link', 'Put back'); b.addEventListener('click', () => { i.done = false; sync(); if (window.DumplingBrain?.connected && i.path) window.DumplingBrain.setStatus(i.path, 'open').catch(() => { i.done = true; sync() }) }); r.append(b); dv.append(r) }
   const fv = $('future'); fv.replaceChildren()
   const groups = [['This week', (i) => eff(i) <= 7], ['This month', (i) => eff(i) > 7 && eff(i) <= 31], ['Later', (i) => eff(i) > 31]]
-  for (const [name, test] of groups) { const L = future().filter(test); if (!L.length) continue; fv.append(h('div', 'label', name)); for (const i of L) { const r = h('div', 'up'); r.dataset.id = i.id; r.style.setProperty('--c', reef(i.reef).color); r.append(h('i'), h('span', 'n', i.short), h('span', 'd', i.path && i.undated ? 'No date' : fmtDate(i.due))); const move = moveButton(i); if (move) r.append(move); fv.append(r) } }
-  if (!future().length) fv.append(h('p', 'empty', 'Nothing coming up.'))
+  for (const [name, test] of groups) { const L = future().filter(matchesCategory).filter(test); if (!L.length) continue; fv.append(h('div', 'label', name)); for (const i of L) { const r = h('div', 'up'); r.dataset.id = i.id; r.style.setProperty('--c', reef(i.reef).color); r.append(h('i'), h('div', 'n', h('div', null, i.short), categoryTag(i)), h('span', 'd', i.path && i.undated ? 'No date' : fmtDate(i.due))); const move = moveButton(i); if (move) r.append(move); fv.append(r) } }
+  if (!future().filter(matchesCategory).length) fv.append(h('p', 'empty', empty('Nothing coming up.')))
 }
 
 // ---------- the pool: a thin trust layer ----------
-// A little pleated dumpling, tinted by area of life. r is its half-height scale; tilt gives each one its own lean.
+// A little pleated dumpling, tinted by urgency. r is its half-height scale; tilt gives each one its own lean.
 function tint(hex, t) { const n = parseInt(hex.slice(1), 16), c = [n >> 16, (n >> 8) & 255, n & 255].map((v) => Math.round(v + (255 - v) * t)); return `rgb(${c})` }
 const P2 = new Map(); const path2 = (d) => { if (!P2.has(d)) P2.set(d, new Path2D(d)); return P2.get(d) }
 function dumpling(ctx, x, y, r, tilt, color, alpha, ring, sh) {
@@ -304,6 +350,10 @@ function steam(ctx, x, y, t, ph) { // a faint wisp over today's dumplings
 const cv = $('c'), ctx = cv.getContext('2d'), pool = $('pool')
 let W = 1, H = 1, dpr = 1, bubbles = [], fx = [], t0 = performance.now()
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
+let poolPaused = false, settleUntil = 0, lastFrame = performance.now()
+cv.addEventListener('pointerenter', () => { poolPaused = true })
+cv.addEventListener('pointerleave', () => { poolPaused = false })
+
 function size() { dpr = devicePixelRatio || 1; W = pool.clientWidth; H = pool.clientHeight; cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0) }
 new ResizeObserver(size).observe(pool); size()
 const anchor = (r) => ({ x: r.x * W, y: H * .5 })
@@ -311,46 +361,114 @@ function spawn(item, fromTop) { const r = reef(item.reef), a = anchor(r); bubble
 items.filter((i) => !i.done).forEach((i) => spawn(i, false))
 function frame(tn) {
   requestAnimationFrame(frame)
+  const dt = Math.min(2, (tn - lastFrame) / (1000 / 60)); lastFrame = tn
+  const moving = !reduce && (!poolPaused || drag || tn < settleUntil)
   const t = (tn - t0) / 1000, sx = Math.min(1.2, W / 390); ctx.clearRect(0, 0, W, H)
+  const visibleBubbles = bubbles.filter((b) => matchesCategory(b.item))
   const near = (i) => isToday(i) || isTomorrow(i) // these get a name; the rest are just remembered
-  for (const r of reefs) { if (!items.some((i) => !i.done && i.reef === r.name)) continue; const a = anchor(r), g = ctx.createRadialGradient(a.x, a.y, 0, a.x, a.y, 60 * sx); g.addColorStop(0, r.color + '2a'); g.addColorStop(1, r.color + '00'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(a.x, a.y, 60 * sx, 0, 6.3); ctx.fill() }
-  for (const b of bubbles) { ctx.font = '600 10px Inter, system-ui, sans-serif'; b.w = near(b.item) ? Math.max(40, ctx.measureText(b.item.short).width + 10) : 26; b.h = near(b.item) ? 48 : 20 }
-  const themes = new Map(); for (const b of bubbles) if (b.item.theme) { if (!themes.has(b.item.theme)) themes.set(b.item.theme, []); themes.get(b.item.theme).push(b) }
-  if (!reduce) {
-    for (const g of themes.values()) if (g.length > 1) { const cx = g.reduce((a, b) => a + b.x, 0) / g.length, cy = g.reduce((a, b) => a + b.y, 0) / g.length; for (const b of g) { b.vx += (cx - b.x) * .003; b.vy += (cy - b.y) * .003 } }
-    for (let a = 0; a < bubbles.length; a++) for (let c = a + 1; c < bubbles.length; c++) { const A = bubbles[a], B = bubbles[c], dx = B.x - A.x, dy = B.y - A.y, ox = (A.w + B.w) / 2 - Math.abs(dx), oy = (A.h + B.h) / 2 - Math.abs(dy)
-      if (ox > 0 && oy > 0) { if (ox < oy) { const f = Math.sign(dx || 1) * ox * .09; A.vx -= f; B.vx += f } else { const f = Math.sign(dy || 1) * oy * .09; A.vy -= f; B.vy += f } } }
-  }
+  for (const r of reefs) { if (!items.some((i) => !i.done && matchesCategory(i) && i.reef === r.name)) continue; const a = anchor(r), g = ctx.createRadialGradient(a.x, a.y, 0, a.x, a.y, 60 * sx); g.addColorStop(0, r.color + '2a'); g.addColorStop(1, r.color + '00'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(a.x, a.y, 60 * sx, 0, 6.3); ctx.fill() }
+  for (const b of visibleBubbles) { ctx.font = '600 10px Inter, system-ui, sans-serif'; b.w = near(b.item) ? Math.max(40, ctx.measureText(b.item.short).width + 10) : 26; b.h = near(b.item) ? 48 : 20 }
+  const themes = new Map(); for (const b of visibleBubbles) if (b.item.theme) { if (!themes.has(b.item.theme)) themes.set(b.item.theme, []); themes.get(b.item.theme).push(b) }
   for (const [, g] of themes) { if (g.length < 2) continue // a soft halo for things that belong together
     const cx = g.reduce((a, b) => a + b.x, 0) / g.length, cy = g.reduce((a, b) => a + b.y, 0) / g.length, rad = Math.max(...g.map((b) => Math.hypot(b.x - cx, b.y - cy))) + 30
     const same = g.every((b) => b.item.reef === g[0].item.reef), col = same ? reef(g[0].item.reef).color : '#d9f3ee'
     const gr = ctx.createRadialGradient(cx, cy, rad * .15, cx, cy, rad); gr.addColorStop(0, col + '30'); gr.addColorStop(.75, col + '1a'); gr.addColorStop(1, col + '00'); ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(cx, cy, rad, 0, 6.3); ctx.fill() }
-  for (const b of bubbles) {
-    const i = b.item, r = reef(i.reef), a = anchor(r), n = near(i), far = Math.min(1, eff(i) / 60)
-    const tx = a.x + Math.cos(t * .3 + b.ph) * 34 * sx, ty = a.y + Math.sin(t * .4 + b.ph * 1.3) * 22 + far * 10
-    if (!reduce) { b.vx = (b.vx + (tx - b.x) * .006) * .92; b.vy = (b.vy + (ty - b.y) * .006) * .92; b.x += b.vx; b.y += b.vy } else { b.x = tx; b.y = ty }
-    b.x = Math.max(b.w / 2 + 4, Math.min(W - b.w / 2 - 4, b.x)); b.y = Math.max(14, Math.min(H - 22, b.y))
-    const hl = i.id === selId, rad = (n ? 12 : 6.5 + (1 - far) * 2.5) * (hl ? 1.25 : 1)
-    const wob = b.born && !reduce ? Math.sin((tn - b.born) / 70) * .5 * Math.max(0, 1 - (tn - b.born) / 1600) : 0 // new ones wobble as they land
-    dumpling(ctx, b.x, b.y, rad, b.tilt + wob, r.color, n ? 1 : .85 - far * .3, hl, shapeOf(i))
-    if (isToday(i) && !reduce) steam(ctx, b.x, b.y - rad * .9, t, b.ph)
-    if (n || hl) { ctx.font = '600 10px Inter, system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgba(7,22,29,.9)'; ctx.strokeText(i.short, b.x, b.y + rad + 12); ctx.fillStyle = hl ? '#fff' : '#d9f3ee'; ctx.fillText(i.short, b.x, b.y + rad + 12) }
+  for (const b of visibleBubbles) {
+    const i = b.item, r = reef(i.reef), a = b.home ? { x: b.home.x * W, y: b.home.y * H } : anchor(r), n = near(i), far = Math.min(1, eff(i) / 60)
+    const motion = reduce ? 0 : t
+    const tx = a.x + Math.cos(motion * .12 + b.ph) * 6 * sx, ty = a.y + Math.sin(motion * .15 + b.ph * 1.3) * 4 + far * 10
+    if (drag?.bubble === b && drag.moved) {
+      const follow = reduce ? 1 : 1 - Math.pow(.28, dt)
+      b.vx = (drag.target.x - b.x) * follow; b.vy = (drag.target.y - b.y) * follow
+      b.x += b.vx; b.y += b.vy
+    } else if (moving) {
+      const damping = Math.pow(.84, dt)
+      b.vx = (b.vx + (tx - b.x) * .012 * dt) * damping; b.vy = (b.vy + (ty - b.y) * .012 * dt) * damping
+      b.x += b.vx * dt; b.y += b.vy * dt
+    }
+    b.x = Math.max(b.w / 2 + 4, Math.min(W - b.w / 2 - 4, b.x)); b.y = Math.max(18, Math.min(H - 30, b.y))
   }
-  fx = fx.filter((f) => (f.t += .025) < 1); for (const f of fx) { ctx.beginPath(); ctx.arc(f.x, f.y - f.t * 20, 6 + f.t * 26, 0, 6.3); ctx.strokeStyle = f.c; ctx.globalAlpha = 1 - f.t; ctx.lineWidth = 2; ctx.stroke(); ctx.globalAlpha = 1 }
+  if (moving || drag) separateDumplings(visibleBubbles, drag?.bubble || null, W, H, !!drag?.moved)
+  for (const b of visibleBubbles) {
+    const i = b.item, n = near(i), far = Math.min(1, eff(i) / 60)
+    const hl = i.id === selId, rad = (n ? 12 : 6.5 + (1 - far) * 2.5) * (hl ? 1.25 : 1)
+    const wob = b.born && !reduce ? Math.sin((tn - b.born) / 140) * .12 * Math.max(0, 1 - (tn - b.born) / 900) : 0 // new ones wobble as they land
+    const speed = Math.min(1, Math.hypot(b.vx, b.vy) / 10), held = drag?.bubble === b
+    ctx.save(); ctx.translate(b.x, b.y); ctx.scale(1 + (reduce ? 0 : speed * .09), 1 - (reduce ? 0 : speed * .07)); ctx.translate(-b.x, -b.y)
+    if (held) { ctx.shadowColor = 'rgba(40, 91, 120, .22)'; ctx.shadowBlur = 12; ctx.shadowOffsetY = 5 }
+    dumpling(ctx, b.x, b.y, rad * (held ? 1.12 : 1), b.tilt + wob + (reduce ? 0 : b.vx * .012), urgency(i).color, n ? 1 : .85 - far * .3, hl, shapeOf(i)); ctx.restore()
+    if (isToday(i) && !reduce) steam(ctx, b.x, b.y - rad * .9, t, b.ph)
+    if (n || hl) { ctx.font = '600 10px Inter, system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgba(219,239,246,.94)'; ctx.strokeText(i.short, b.x, b.y + rad + 12); ctx.fillStyle = '#214758'; ctx.fillText(i.short, b.x, b.y + rad + 12) }
+  }
+  fx = fx.filter((f) => tn - f.start < (reduce ? 160 : 700))
+  for (const f of fx) {
+    const p = Math.min(1, (tn - f.start) / 700)
+    if (!reduce && p < .25) dumpling(ctx, f.x, f.y, f.r * (1 + p * 2), f.tilt, f.c, 1 - p * 3, false, f.shape)
+    ctx.save(); ctx.globalAlpha = reduce ? 1 - p : 1 - p
+    ctx.strokeStyle = f.c; ctx.lineWidth = 2 * (1 - p); ctx.beginPath(); ctx.arc(f.x, f.y, 8 + p * (reduce ? 4 : 36), 0, Math.PI * 2); ctx.stroke()
+    if (!reduce) for (let k = 0; k < 10; k++) {
+      const angle = k * Math.PI * 2 / 10, distance = 8 + p * 40
+      ctx.fillStyle = k % 2 ? f.c : '#d9f3ee'; ctx.beginPath(); ctx.arc(f.x + Math.cos(angle) * distance, f.y + Math.sin(angle) * distance + p * p * 12, 2.5 * (1 - p), 0, Math.PI * 2); ctx.fill()
+    }
+    ctx.restore()
+  }
 }
+let drag = null
 requestAnimationFrame(frame)
+const point = (e) => { const rc = cv.getBoundingClientRect(); return { x: e.clientX - rc.left, y: e.clientY - rc.top } }
+function hitBubble(p) {
+  let best = null, distance = Infinity
+  for (const b of bubbles.filter((b) => matchesCategory(b.item))) {
+    const d = Math.hypot(b.x - p.x, b.y - p.y)
+    if (d < 26 && d < distance) { best = b; distance = d }
+  }
+  return best
+}
+function selectBubble(b) {
+  selId = b.item.id; tab = eff(b.item) >= 2 ? 'future' : 'plan'; render()
+  const el = document.querySelector(`[data-id="${selId}"]`)
+  if (el) { el.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' }); el.classList.add('hl'); setTimeout(() => el.classList.remove('hl'), 1400) }
+}
 cv.addEventListener('pointerdown', (e) => {
-  const rc = cv.getBoundingClientRect(), x = e.clientX - rc.left, y = e.clientY - rc.top; let best = null, d = 26
-  for (const b of bubbles) { const k = Math.hypot(b.x - x, b.y - y); if (k < d) { d = k; best = b } }
-  selId = best ? best.item.id : null; if (!best) return
-  tab = eff(best.item) >= 2 ? 'future' : 'plan'; render()
-  const el = document.querySelector(`[data-id="${selId}"]`); if (el) { el.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' }); el.classList.add('hl'); setTimeout(() => el.classList.remove('hl'), 1400) }
+  if (!e.isPrimary || e.button !== 0) return
+  const p = point(e), b = hitBubble(p); if (!b) return
+  e.preventDefault(); poolPaused = true
+  drag = { bubble: b, pointer: e.pointerId, start: p, dx: b.x - p.x, dy: b.y - p.y, moved: false, target: { x: b.x, y: b.y }, last: p, at: performance.now(), toss: { x: 0, y: 0 }, original: { x: b.x, y: b.y, home: b.home } }
+  b.vx = b.vy = 0; cv.setPointerCapture(e.pointerId); cv.style.cursor = 'grabbing'
 })
+cv.addEventListener('pointermove', (e) => {
+  if (!drag || e.pointerId !== drag.pointer) return
+  const p = point(e); if (Math.hypot(p.x - drag.start.x, p.y - drag.start.y) > 4) drag.moved = true
+  if (!drag.moved) return
+  const b = drag.bubble
+  const elapsed = Math.max(8, performance.now() - drag.at)
+  drag.toss = { x: Math.max(-5, Math.min(5, (p.x - drag.last.x) / elapsed * 16)), y: Math.max(-5, Math.min(5, (p.y - drag.last.y) / elapsed * 16)) }
+  drag.last = p; drag.at = performance.now()
+  drag.target = { x: Math.max(b.w / 2 + 4, Math.min(W - b.w / 2 - 4, p.x + drag.dx)), y: Math.max(18, Math.min(H - 30, p.y + drag.dy)) }
+})
+function finishDrag(e, cancelled = false) {
+  if (!drag || e.pointerId !== drag.pointer) return
+  const current = drag; drag = null; cv.style.cursor = 'grab'
+  if (cancelled) Object.assign(current.bubble, current.original)
+  else if (!current.moved) selectBubble(current.bubble)
+  else {
+    const b = current.bubble, recent = performance.now() - current.at < 90
+    b.vx = reduce || !recent ? 0 : current.toss.x; b.vy = reduce || !recent ? 0 : current.toss.y
+    b.home = { x: Math.max(.08, Math.min(.92, (b.x + b.vx * 3) / W)), y: Math.max(.15, Math.min(.8, (b.y + b.vy * 3) / H)) }
+    settleUntil = performance.now() + 1800
+  }
+  if (cv.hasPointerCapture(e.pointerId)) cv.releasePointerCapture(e.pointerId)
+  poolPaused = e.pointerType === 'mouse' && cv.matches(':hover')
+}
+cv.addEventListener('pointerup', (e) => finishDrag(e))
+cv.addEventListener('pointercancel', (e) => finishDrag(e, true))
+cv.addEventListener('lostpointercapture', (e) => finishDrag(e, true))
 
 // ---------- dumping ----------
 const filler = new Set('a an the to for of and or with at on in my me i we need needs have has must should remember dont forget please tomorrow today tonight urgent asap now get do make send is are was be it this that some about before after by up out from really just also then wants want'.split(' '))
 function shorten(text) { const w = text.replace(/\bin \d+ (day|week|month)s?\b/ig, '').replace(/[^\w' -]/g, ' ').split(/\s+/).filter((x) => x && !filler.has(x.toLowerCase())); const o = w.slice(0, 2).join(' ') || text.slice(0, 14); return o.charAt(0).toUpperCase() + o.slice(1) }
 function drop(text) {
+  if (finishFromText(text)) return
   if (window.DumplingBrain?.connected) return window.DumplingBrain.dump(text) // connected: the brain files it, then it shows up here
   const made = []
   for (const p of text.split(/[.\n;]+/).map((x) => x.trim()).filter(Boolean)) {
@@ -360,6 +478,16 @@ function drop(text) {
   }
   if (!made.length) return; made.forEach((m) => fresh.add(m.id)); sync(); fresh.clear(); toast(`Filed ${made.length}: ` + made.map((i) => `${i.short} → ${isToday(i) ? 'Today' : isTomorrow(i) ? 'Tomorrow' : 'Future'}`).join(', '))
 }
+function finishFromText(text) {
+  const matches = completionMatches(text, items)
+  if (matches === null) return false
+  if (matches.length !== 1) { toast(matches.length ? 'Which task? Use its full name to mark it done.' : 'Which task is done? Use its name from the list.'); return true }
+  const task = matches[0]
+  if (task.done) toast(`${task.short} is already done.`)
+  else { complete(task); toast(`Popped! ${task.short} is done.`) }
+  return true
+}
+window.addEventListener('dumpling:transcript', (e) => { if (typeof e.detail === 'string') finishFromText(e.detail) })
 $('f').addEventListener('submit', (e) => { e.preventDefault(); const v = $('in').value; if (v.trim()) { const sent = drop(v); $('in').value = ''; syncMic(); if (sent && sent.catch) sent.catch(() => { $('in').value = v; syncMic() }) } })
 function syncMic() {
   const hasText = $('in').value.trim().length > 0
@@ -385,6 +513,7 @@ window.dumpling = {
     base = new Date(2026, 10, 18)
     items = exampleItems.map((i) => ({ id: uid++, done: false, ...i }))
     $('example-label').hidden = false
+    drag = null; selId = null; fx = []
     bubbles = []; items.filter((i) => !i.done).forEach((i) => spawn(i, false))
     render()
   },
@@ -392,6 +521,7 @@ window.dumpling = {
     $('example-label').hidden = true
     base = new Date(+todayIso.slice(0, 4), +todayIso.slice(5, 7) - 1, +todayIso.slice(8, 10))
     items = list.map((i) => ({ id: uid++, ...i }))
+    drag = null; selId = null; fx = []
     bubbles = []; items.filter((i) => !i.done).forEach((i) => spawn(i, false))
     render()
   },
