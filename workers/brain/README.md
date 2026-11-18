@@ -72,6 +72,12 @@ A page's `area` is worked out from what's filed on it: `work`, `personal`, or `m
 
 Filing is structured output with narrow fields, filed by code: the model never writes notes directly.
 
+### Tidying
+
+Once five batches have settled, one Opus call tidies the vault. It merges repeated and outdated lines under `## Learned in conversation` and `## Lessons`. It folds two topics into one when they're plainly the same thing under two names: the items move across, the page that keeps them takes the other's filed lines, and the folded page is deleted with its last version kept. And it gives one to three topics to each to-do or event that was added directly, since those arrive with none. The model returns names and paths only, and code makes every change.
+
+What's due, coming up or gone quiet is never stored. It's worked out when the brief is read: a to-do is quiet when nobody has touched it for 30 days, or it's more than 14 days overdue.
+
 ## API
 
 Every route needs `Authorization: Bearer <WorkOS access token>`, and answers `401 sign_in_required` without one. Errors are `{ "error": "<code>" }`.
@@ -100,9 +106,9 @@ A stateless MCP server at `MCP_RESOURCE` (`https://dumpling.build40for40.com/mcp
 
 | Tool | What it does |
 | --- | --- |
-| `open_brain` | Read only. How to use the brain, then what a voice session would start from: USER.md, MEMORY.md, the last conversations, topics with their area and summary, and the newest items |
+| `open_brain` | Read only. How to use the brain, then what a voice session would start from: USER.md, MEMORY.md, the last conversations, topics with their area and summary, to-dos due this week or overdue, events in the next week, to-dos that have gone quiet, and the newest items |
 | `capture` | Saves one thing the person said by adding it to the log, with the app's name as its source. It's filed with everything else, about a minute later |
-| `recall` | Read only. The same search the voice `recall` tool runs |
+| `recall` | Read only. The same search the voice `recall` tool runs. With `area`, notes filed under the other area are left out, and mixed pages and notes with no area stay in |
 | `read_note` | Read only. One note in full by its path, with its fields and the notes that link to it |
 | `add_task`, `add_event` | Files one to-do or event straight away, already sorted by the AI that added it. An event needs a start. An area nobody gave is filed as `personal` and listed in `inferred` |
 | `list_tasks` | Read only. To-dos by `status` (open unless asked), `area` and `due_by`, dated ones first. Open lists end with what's captured but not filed yet |
