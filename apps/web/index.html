@@ -15,7 +15,7 @@ html, body { height: 100% }
 body { margin: 0; background: var(--water); color: var(--foam); font-family: var(--font); overflow: hidden }
 .phone { height: 100%; max-width: 520px; margin: 0 auto; display: flex; flex-direction: column; background: linear-gradient(180deg, var(--deep), var(--water) 55%) }
 .pad { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)) }
-#pool { position: relative; flex: none; height: clamp(130px, 19vh, 190px); margin-top: env(safe-area-inset-top, 0px) }
+#pool { position: relative; flex: none; height: clamp(150px, 20vh, 200px); margin-top: env(safe-area-inset-top, 0px) }
 canvas { position: absolute; inset: 0; width: 100%; height: 100% }
 .seg { display: flex; gap: 4px; padding-block: 8px 4px }
 .seg button { flex: 1; border: 1px solid var(--line); background: transparent; color: var(--mute); border-radius: 999px; padding: 9px 0; font: 500 14px var(--font); cursor: pointer }
@@ -70,7 +70,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--gold); outl
 </head>
 <body>
 <div class="phone">
-  <div id="pool" role="img" aria-label="Everything the brain remembers, as colour-coded bubbles"><canvas id="c"></canvas></div>
+  <div id="pool" role="img" aria-label="Everything the brain remembers, as colour-coded dumplings"><canvas id="c"></canvas></div>
   <div class="seg pad" id="seg"></div>
   <div class="scroll pad" id="scroll">
     <div id="plan">
@@ -170,25 +170,37 @@ function render() {
 }
 
 // ---------- the pool: a thin trust layer ----------
+// A little pleated dumpling, tinted by area of life. r is its half-height scale; tilt gives each one its own lean.
+function tint(hex, t) { const n = parseInt(hex.slice(1), 16), c = [n >> 16, (n >> 8) & 255, n & 255].map((v) => Math.round(v + (255 - v) * t)); return `rgb(${c})` }
+function dumpling(ctx, x, y, r, tilt, color, alpha, ring) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(tilt); ctx.globalAlpha = alpha
+  ctx.beginPath(); ctx.moveTo(-1.2 * r, .35 * r); ctx.bezierCurveTo(-1.15 * r, -1.0 * r, 1.15 * r, -1.0 * r, 1.2 * r, .35 * r); ctx.bezierCurveTo(.95 * r, 1.25 * r, -.95 * r, 1.25 * r, -1.2 * r, .35 * r); ctx.closePath()
+  const g = ctx.createLinearGradient(0, -r, 0, r); g.addColorStop(0, tint(color, .55)); g.addColorStop(.45, color); g.addColorStop(1, color); ctx.fillStyle = g; ctx.fill()
+  ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(7,22,29,.35)'; ctx.stroke()
+  ctx.strokeStyle = 'rgba(255,255,255,.6)'; ctx.lineWidth = Math.max(1, r * .1); ctx.lineCap = 'round'
+  for (const k of [-.7, -.35, 0, .35, .7]) { const px = k * r, top = .35 * r - 1.03 * r * (1 - (px / (1.2 * r)) ** 2) + .05 * r; ctx.beginPath(); ctx.moveTo(px - .1 * r, top); ctx.lineTo(px + .08 * r, top + .32 * r); ctx.stroke() }
+  if (ring) { ctx.globalAlpha = 1; ctx.strokeStyle = '#d9f3ee'; ctx.lineWidth = 1.5; ctx.stroke() }
+  ctx.restore()
+}
 const cv = $('c'), ctx = cv.getContext('2d'), pool = $('pool')
 let W = 1, H = 1, dpr = 1, bubbles = [], fx = [], t0 = performance.now()
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
 function size() { dpr = devicePixelRatio || 1; W = pool.clientWidth; H = pool.clientHeight; cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0) }
 new ResizeObserver(size).observe(pool); size()
 const anchor = (r) => ({ x: r.x * W, y: H * .5 })
-function spawn(item, fromTop) { const r = reef(item.reef), a = anchor(r); bubbles.push({ item, x: fromTop ? W / 2 : a.x + (Math.random() - .5) * 40, y: fromTop ? -10 : a.y + (Math.random() - .5) * 40, vx: 0, vy: 0, ph: Math.random() * 6.28, w: 16, h: 16 }) }
+function spawn(item, fromTop) { const r = reef(item.reef), a = anchor(r); bubbles.push({ item, x: fromTop ? W / 2 : a.x + (Math.random() - .5) * 40, y: fromTop ? -10 : a.y + (Math.random() - .5) * 40, vx: 0, vy: 0, ph: Math.random() * 6.28, tilt: (Math.random() - .5) * .5, w: 24, h: 18 }) }
 items.filter((i) => !i.done).forEach((i) => spawn(i, false))
 function frame(tn) {
   requestAnimationFrame(frame)
   const t = (tn - t0) / 1000, sx = Math.min(1.2, W / 390); ctx.clearRect(0, 0, W, H)
   const near = (i) => isToday(i) || isTomorrow(i) // these get a name; the rest are just remembered
   for (const r of reefs) { if (!items.some((i) => !i.done && i.reef === r.name)) continue; const a = anchor(r), g = ctx.createRadialGradient(a.x, a.y, 0, a.x, a.y, 60 * sx); g.addColorStop(0, r.color + '2a'); g.addColorStop(1, r.color + '00'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(a.x, a.y, 60 * sx, 0, 6.3); ctx.fill() }
-  for (const b of bubbles) { ctx.font = '600 10px Inter, system-ui, sans-serif'; b.w = near(b.item) ? Math.max(30, ctx.measureText(b.item.short).width + 6) : 14; b.h = near(b.item) ? 36 : 14 }
+  for (const b of bubbles) { ctx.font = '600 10px Inter, system-ui, sans-serif'; b.w = near(b.item) ? Math.max(40, ctx.measureText(b.item.short).width + 10) : 26; b.h = near(b.item) ? 48 : 20 }
   const themes = new Map(); for (const b of bubbles) if (b.item.theme) { if (!themes.has(b.item.theme)) themes.set(b.item.theme, []); themes.get(b.item.theme).push(b) }
   if (!reduce) {
     for (const g of themes.values()) if (g.length > 1) { const cx = g.reduce((a, b) => a + b.x, 0) / g.length, cy = g.reduce((a, b) => a + b.y, 0) / g.length; for (const b of g) { b.vx += (cx - b.x) * .003; b.vy += (cy - b.y) * .003 } }
     for (let a = 0; a < bubbles.length; a++) for (let c = a + 1; c < bubbles.length; c++) { const A = bubbles[a], B = bubbles[c], dx = B.x - A.x, dy = B.y - A.y, ox = (A.w + B.w) / 2 - Math.abs(dx), oy = (A.h + B.h) / 2 - Math.abs(dy)
-      if (ox > 0 && oy > 0) { if (ox < oy) { const f = Math.sign(dx || 1) * ox * .04; A.vx -= f; B.vx += f } else { const f = Math.sign(dy || 1) * oy * .04; A.vy -= f; B.vy += f } } }
+      if (ox > 0 && oy > 0) { if (ox < oy) { const f = Math.sign(dx || 1) * ox * .09; A.vx -= f; B.vx += f } else { const f = Math.sign(dy || 1) * oy * .09; A.vy -= f; B.vy += f } } }
   }
   for (const [, g] of themes) { if (g.length < 2) continue // a soft halo for things that belong together
     const cx = g.reduce((a, b) => a + b.x, 0) / g.length, cy = g.reduce((a, b) => a + b.y, 0) / g.length, rad = Math.max(...g.map((b) => Math.hypot(b.x - cx, b.y - cy))) + 30
@@ -197,12 +209,11 @@ function frame(tn) {
   for (const b of bubbles) {
     const i = b.item, r = reef(i.reef), a = anchor(r), n = near(i), far = Math.min(1, eff(i) / 60)
     const tx = a.x + Math.cos(t * .3 + b.ph) * 34 * sx, ty = a.y + Math.sin(t * .4 + b.ph * 1.3) * 22 + far * 10
-    if (!reduce) { b.vx = (b.vx + (tx - b.x) * .01) * .92; b.vy = (b.vy + (ty - b.y) * .01) * .92; b.x += b.vx; b.y += b.vy } else { b.x = tx; b.y = ty }
+    if (!reduce) { b.vx = (b.vx + (tx - b.x) * .006) * .92; b.vy = (b.vy + (ty - b.y) * .006) * .92; b.x += b.vx; b.y += b.vy } else { b.x = tx; b.y = ty }
     b.x = Math.max(b.w / 2 + 4, Math.min(W - b.w / 2 - 4, b.x)); b.y = Math.max(14, Math.min(H - 22, b.y))
-    const hl = i.id === selId, rad = (n ? 8 : 4.5 + (1 - far) * 2) * (hl ? 1.3 : 1)
-    ctx.beginPath(); ctx.arc(b.x, b.y, rad, 0, 6.3); const g = ctx.createRadialGradient(b.x - rad * .3, b.y - rad * .3, 1, b.x, b.y, rad); g.addColorStop(0, '#fff'); g.addColorStop(.35, r.color); g.addColorStop(1, r.color + '66')
-    ctx.globalAlpha = n ? 1 : .8 - far * .3; ctx.fillStyle = g; ctx.fill(); ctx.globalAlpha = 1
-    if (n || hl) { ctx.font = '600 10px Inter, system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgba(7,22,29,.9)'; ctx.strokeText(i.short, b.x, b.y + rad + 11); ctx.fillStyle = hl ? '#fff' : '#d9f3ee'; ctx.fillText(i.short, b.x, b.y + rad + 11) }
+    const hl = i.id === selId, rad = (n ? 12 : 6.5 + (1 - far) * 2.5) * (hl ? 1.25 : 1)
+    dumpling(ctx, b.x, b.y, rad, b.tilt, r.color, n ? 1 : .85 - far * .3, hl)
+    if (n || hl) { ctx.font = '600 10px Inter, system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgba(7,22,29,.9)'; ctx.strokeText(i.short, b.x, b.y + rad + 12); ctx.fillStyle = hl ? '#fff' : '#d9f3ee'; ctx.fillText(i.short, b.x, b.y + rad + 12) }
   }
   fx = fx.filter((f) => (f.t += .025) < 1); for (const f of fx) { ctx.beginPath(); ctx.arc(f.x, f.y - f.t * 20, 6 + f.t * 26, 0, 6.3); ctx.strokeStyle = f.c; ctx.globalAlpha = 1 - f.t; ctx.lineWidth = 2; ctx.stroke(); ctx.globalAlpha = 1 }
 }
