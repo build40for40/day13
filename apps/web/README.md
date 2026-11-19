@@ -21,7 +21,7 @@ Open the page with `#connect` and paste a WorkOS access token (demo only: it's k
 
 Without `#connect` it's the example data. `src/plan.ts` is pure and tested, so the rules can change in one place. This needs the brain to file due dates, importance and area, and to allow `PATCH /notes`. Until then every task is undated.
 
-Not wired yet: a proper WorkOS sign-in (a pasted token is the only way in). Deploys go through CI: `.github/workflows/web-deploy.yml` builds `dist/dumpling` and deploys it as a static-assets Worker on every push to `main` that touches `apps/web`.
+Not wired yet: a proper WorkOS sign-in (a pasted token is the only way in). Deploys go through CI: `.github/workflows/web-deploy.yml` builds `dist/dumpling` and deploys it as a static-assets Worker on every push to `main` that touches `apps/web`. A pull request that touches it gets a preview link in a comment.
 
 ## Private in-page voice demo
 
