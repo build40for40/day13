@@ -1,6 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { SKILL_BODY, SKILL_NAME, openBrainText } from "@day13/instructions";
-import { NOTHING_FOUND, OPEN_SUMMARY, type Scenario } from "./scenarios.ts";
+import { NO_EVENTS, NO_TASKS, NOTHING_FOUND, OPEN_SUMMARY, type Scenario } from "./scenarios.ts";
 import { buildSurface, type Role, type Variant } from "./variants.ts";
 
 /** The one call the runner makes. Live runs wrap the SDK; tests script the replies. */
@@ -73,6 +73,19 @@ export function fakeResult(role: Role | "unknown", input: Record<string, unknown
       return { content: "Saved." };
     case "recall":
       return { content: scenario.recallResult ?? NOTHING_FOUND };
+    case "read":
+      return { content: scenario.recallResult ?? "There's no note at that path.", ...(scenario.recallResult ? {} : { is_error: true }) };
+    case "add_task":
+      return { content: "Added to their list as tasks/2026-11-18-added.md." };
+    case "add_event":
+      return { content: "Added to what's coming up as events/2026-11-18-added.md." };
+    case "list_tasks":
+      return { content: scenario.tasksResult ?? NO_TASKS };
+    case "list_events":
+      return { content: scenario.eventsResult ?? NO_EVENTS };
+    case "update_task":
+    case "update_event":
+      return { content: `Updated ${String(input.path)}.` };
     case "memory":
       return { content: "Remembered." };
     case "skill":

@@ -1,7 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { BRAIN_TOOLS, CONNECTOR_NAME, CUSTOM_INSTRUCTIONS, SERVER_INSTRUCTIONS, SKILL_DESCRIPTION, SKILL_NAME, TOOL_NAMES, type BrainTool } from "@day13/instructions";
 
-export type Role = "open" | "capture" | "recall" | "memory" | "skill";
+export type Role = "open" | "capture" | "recall" | "read" | "add_task" | "list_tasks" | "update_task" | "add_event" | "list_events" | "update_event" | "memory" | "skill";
 
 /** One way the brain could reach the model. Each field is a lever the team can pull; the eval compares them. */
 export interface Variant {
@@ -46,9 +46,27 @@ const BARE: Record<string, { name: string; description: string }> = {
   [TOOL_NAMES.open]: { name: "open", description: "Open." },
   [TOOL_NAMES.capture]: { name: "save", description: "Save text." },
   [TOOL_NAMES.recall]: { name: "search", description: "Search saved text." },
+  [TOOL_NAMES.readNote]: { name: "read", description: "Read a note." },
+  [TOOL_NAMES.addTask]: { name: "add_task", description: "Add a task." },
+  [TOOL_NAMES.listTasks]: { name: "list_tasks", description: "List tasks." },
+  [TOOL_NAMES.updateTask]: { name: "update_task", description: "Update a task." },
+  [TOOL_NAMES.addEvent]: { name: "add_event", description: "Add an event." },
+  [TOOL_NAMES.listEvents]: { name: "list_events", description: "List events." },
+  [TOOL_NAMES.updateEvent]: { name: "update_event", description: "Update an event." },
 };
 
-const ROLE_OF: Record<string, Role> = { [TOOL_NAMES.open]: "open", [TOOL_NAMES.capture]: "capture", [TOOL_NAMES.recall]: "recall" };
+const ROLE_OF: Record<string, Role> = {
+  [TOOL_NAMES.open]: "open",
+  [TOOL_NAMES.capture]: "capture",
+  [TOOL_NAMES.recall]: "recall",
+  [TOOL_NAMES.readNote]: "read",
+  [TOOL_NAMES.addTask]: "add_task",
+  [TOOL_NAMES.listTasks]: "list_tasks",
+  [TOOL_NAMES.updateTask]: "update_task",
+  [TOOL_NAMES.addEvent]: "add_event",
+  [TOOL_NAMES.listEvents]: "list_events",
+  [TOOL_NAMES.updateEvent]: "update_event",
+};
 
 export interface Surface {
   system: string;
@@ -60,7 +78,7 @@ export interface Surface {
 function toTool(tool: BrainTool, naming: Variant["naming"], deferred: boolean): Anthropic.Tool {
   const bare = naming === "bare" ? BARE[tool.name] : undefined;
   const properties = Object.fromEntries(
-    Object.entries(tool.inputSchema.properties).map(([key, prop]) => [key, bare ? { type: prop.type } : prop]),
+    Object.entries(tool.inputSchema.properties).map(([key, prop]) => [key, bare ? (prop.type === "array" ? { type: prop.type, items: prop.items } : { type: prop.type }) : prop]),
   );
   return {
     name: bare?.name ?? tool.name,

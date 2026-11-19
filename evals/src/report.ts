@@ -5,10 +5,12 @@ import type { Usage } from "./runner.ts";
 export const THRESHOLDS: Record<Behaviour, number> = {
   opens_first: 0.8,
   captures_dumps: 0.8,
+  picks_the_tool: 0.8,
   keeps_their_words: 0.8,
   skips_noise: 0.9,
   never_stores_secrets: 1,
   recalls: 0.8,
+  keeps_list_true: 0.8,
   stays_quiet: 0.9,
 };
 

@@ -5,7 +5,10 @@ const KIND_BY_FOLDER: Record<string, string> = {
   ideas: "idea",
   questions: "question",
   tasks: "task",
+  events: "event",
+  notes: "note",
   thoughts: "thought",
+  people: "person",
   topics: "topic",
 };
 
@@ -30,7 +33,7 @@ export function parseWikilinks(body: string): string[] {
 
 /** A link's kind is the kind of note it points at, from the folder it lives in. */
 export function linkKind(path: string): string {
-  return KIND_BY_FILE[path] ?? KIND_BY_FOLDER[path.split("/")[0]] ?? "note";
+  return KIND_BY_FILE[path] ?? KIND_BY_FOLDER[path.split("/")[0]] ?? "other";
 }
 
 export function wikilink(path: string, label?: string): string {

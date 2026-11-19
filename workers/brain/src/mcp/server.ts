@@ -3,23 +3,33 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { createMcpHandler, getMcpAuthContext } from "agents/mcp/server";
 import { z } from "zod";
 import type { Brief, UserBrain } from "../brain";
+import { registerItemActions } from "../item-actions";
+export { NO_SUCH_TASK, NO_SUCH_EVENT, NO_SUCH_NOTE, NOTHING_TO_CHANGE } from "../item-actions";
+import { renderTopic } from "../prompt";
 import type { Rpc } from "../types";
-import { CAPTURE_TOOL, OPEN_BRAIN_TOOL, RECALL_TOOL, SERVER_INSTRUCTIONS, openBrainText } from "@day13/instructions";
+import {
+  CAPTURE_TOOL,
+  OPEN_BRAIN_TOOL,
+  RECALL_TOOL,
+  SERVER_INSTRUCTIONS,
+  openBrainText,
+} from "@day13/instructions";
 
 const SERVER_NAME = "dumpling";
-export const CAPTURED = "Saved. It'll be filed under topics once things go quiet.";
+export const CAPTURED = "Saved. It'll be filed under topics in a minute or so.";
 
 export const MAX_CAPTURE_CHARS = 8_000;
 const MAX_CONTEXT_CHARS = 500;
 const MAX_ANSWER_CHARS = 2_000;
 const MAX_QUERY_CHARS = 500;
 const MAX_SESSION_NOTE_CHARS = 1_500;
-
-type Brain = Rpc<Pick<UserBrain, "getBrief" | "capture" | "recall">>;
+type Brain = Rpc<Pick<UserBrain, "getBrief" | "capture" | "recall" | "getNote" | "addItem" | "listItems" | "updateNote">>;
 
 /** What the OAuth token was issued with, from `completeAuthorization()` at sign-in. */
 export interface McpProps extends Record<string, unknown> {
   sub: string;
+  /** The name the connected app gave itself at sign-in. Tokens from before this was kept don't have one. */
+  client?: string;
 }
 
 function signedInBrain(): Brain {
@@ -29,6 +39,7 @@ function signedInBrain(): Brain {
 }
 
 const text = (value: string) => ({ content: [{ type: "text" as const, text: value }] });
+const failed = (value: string) => ({ ...text(value), isError: true });
 
 /** A new server per request: clients share one MCP session across chats and send no conversation id, so nothing is kept between calls. */
 export function createBrainServer(): McpServer {
@@ -54,7 +65,8 @@ export function createBrainServer(): McpServer {
       annotations: CAPTURE_TOOL.annotations,
     },
     async (captured) => {
-      await signedInBrain().capture(renderCapture(captured));
+      const client = getMcpAuthContext()?.props.client;
+      await signedInBrain().capture(renderCapture(captured), typeof client === "string" ? client : undefined);
       return text(CAPTURED);
     },
   );
@@ -70,6 +82,13 @@ export function createBrainServer(): McpServer {
     async ({ query }) => text(await signedInBrain().recall(query)),
   );
 
+  registerItemActions(signedInBrain, (tool, schema, run) => {
+    server.registerTool(tool.name, { title: tool.title, description: tool.description, annotations: tool.annotations, inputSchema: schema }, async (input) => {
+      const result = await run(input);
+      return result.isError ? failed(result.text) : text(result.text);
+    });
+  });
+
   return server;
 }
 
@@ -81,14 +100,14 @@ export function renderCapture({ text: said, context, answer }: { text: string; c
   return [said, context && `(Context: ${context})`, answer && `(The AI they asked answered: ${answer})`].filter(Boolean).join("\n");
 }
 
-/** What they've captured that isn't filed yet, then what a voice session would start from. */
+/** What they've said that isn't filed yet, then what a voice session would start from. */
 export function renderBrief({ user, memory, sessionNotes, topics, recent, unfiled, time, today }: Brief): string {
   return [
-    section("Captured lately, not filed yet", unfiled.length ? unfiled.map((turn) => `- ${turn.text.replaceAll("\n", " ")}`).join("\n") : "Nothing waiting."),
+    section("Said lately, not filed yet", unfiled.length ? unfiled.map((turn) => `- ${turn.text.replaceAll("\n", " ")}`).join("\n") : "Nothing waiting."),
     section("About them (USER.md)", [`Preferences: ${JSON.stringify(user.preferences)}`, user.about.trim()].filter(Boolean).join("\n\n")),
     section("How to help them (MEMORY.md)", memory?.trim() || "Nothing yet."),
     section("Their last conversations, newest first", sessionNotes.length ? sessionNotes.map(({ path, body }) => `## ${path}\n${cut(body.trim(), MAX_SESSION_NOTE_CHARS)}`).join("\n\n") : "None yet."),
-    section("Topics their notes are filed under", topics.length ? topics.map((t) => `- ${t.path} (${t.items} ${t.items === 1 ? "item" : "items"})`).join("\n") : "None yet."),
+    section("Topics their notes are filed under", topics.length ? topics.map(renderTopic).join("\n") : "None yet."),
     section("Newest filed items", recent.length ? recent.map((r) => `- ${r.path}: ${r.title}`).join("\n") : "None yet."),
     section("Now", `It's ${time} on ${today}, UK time.`),
   ].join("\n\n");

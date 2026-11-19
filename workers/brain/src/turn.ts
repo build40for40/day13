@@ -1,4 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
+import type { ActionResult } from "./item-actions";
+import type { JsonValue } from "./profile";
 import { liveRequest } from "./claude";
 import type { StreamEvent, ToolCall, Turn } from "./types";
 
@@ -15,6 +17,8 @@ export interface TurnInput {
   /** Sends a stream event to the client as soon as it happens. */
   emit: (event: StreamEvent) => void;
   now?: () => string;
+  itemAction?: (name: string, input: unknown) => Promise<ActionResult> | undefined;
+  onItemChange?: (call: ToolCall) => void;
 }
 
 export interface TurnOutcome {
@@ -43,14 +47,14 @@ export function appendUserText(messages: Anthropic.MessageParam[], text: string)
 }
 
 /** Runs one turn: streams Claude's reply out as it comes, runs its tools here and goes round again until it has finished replying. */
-export async function runTurn({ client, model, context, messages: history, recall, emit, now = () => new Date().toISOString() }: TurnInput): Promise<TurnOutcome> {
+export async function runTurn({ client, model, context, messages: history, recall, emit, itemAction, onItemChange, now = () => new Date().toISOString() }: TurnInput): Promise<TurnOutcome> {
   const started = Date.now();
   let firstText: number | null = null;
   let spoke = false;
   const messages = [...history];
   const turns: Turn[] = [];
   const facts: string[] = [];
-  const state: ToolState = { facts, recall };
+  const state: ToolState = { facts, recall, itemAction, onItemChange };
   const usage: TurnOutcome["usage"] = [];
   const outcome = (rounds: number): TurnOutcome => ({ messages, turns, facts, timings: { first_text_ms: firstText, total_ms: Date.now() - started, rounds }, usage });
 
@@ -79,7 +83,8 @@ export async function runTurn({ client, model, context, messages: history, recal
 
     messages.push({ role: "assistant", content: message.content as Anthropic.ContentBlockParam[] });
     const recorded: ToolCall[] = [];
-    const results = toolUses.map((use) => runTool(use, state, recorded));
+    const results: ToolResult[] = [];
+    for (const use of toolUses) results.push(await runTool(use, state, recorded));
     turns.push({ role: "assistant", at: now(), ...(text ? { text } : {}), ...(recorded.length ? { tool_calls: recorded } : {}) });
 
     if (!results.length) return outcome(round);
@@ -93,10 +98,12 @@ export async function runTurn({ client, model, context, messages: history, recal
 interface ToolState {
   facts: string[];
   recall: (query: string) => string;
+  itemAction: TurnInput["itemAction"];
+  onItemChange: TurnInput["onItemChange"];
 }
 
 /** Runs one tool call here in the Durable Object. A bad call goes back to Claude as an error result, so it can try again. */
-function runTool(use: Anthropic.ToolUseBlock, state: ToolState, recorded: ToolCall[]): ToolResult {
+async function runTool(use: Anthropic.ToolUseBlock, state: ToolState, recorded: ToolCall[]): Promise<ToolResult> {
   const failed = (content: string): ToolResult => ({ tool_use_id: use.id, content, is_error: true });
   if (use.name === "note") {
     const fact = (use.input as { fact?: unknown } | null)?.fact;
@@ -110,6 +117,16 @@ function runTool(use: Anthropic.ToolUseBlock, state: ToolState, recorded: ToolCa
     if (typeof query !== "string" || !query.trim()) return failed("recall needs {query}: a few plain words, never empty.");
     recorded.push({ id: use.id, name: "recall", input: { query: query.trim() } });
     return { tool_use_id: use.id, content: state.recall(query.trim()) };
+  }
+  const result = await state.itemAction?.(use.name, use.input);
+  if (result) {
+    if (result.isError) return failed(result.text);
+    if (result.changed) {
+      const call = { id: use.id, name: use.name, input: use.input as Record<string, JsonValue>, changed: true } as const;
+      recorded.push(call);
+      state.onItemChange?.(call);
+    }
+    return { tool_use_id: use.id, content: result.text };
   }
   return failed(`There's no tool called ${use.name}.`);
 }

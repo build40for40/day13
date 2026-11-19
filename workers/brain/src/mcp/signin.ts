@@ -66,7 +66,8 @@ async function finish(request: Request, env: SignInEnv): Promise<Response> {
     headers.set("Location", authorizationErrorRedirect(original, "server_error", "Signing in with WorkOS failed"));
     return new Response(null, { status: 302, headers });
   }
-  const props: McpProps = { sub };
+  const client = await oauth.describeConsent(original).then((details) => details.clientName, () => undefined);
+  const props: McpProps = { sub, ...(client ? { client } : {}) };
   const { redirectTo } = await oauth.completeAuthorization({ request: original, userId: sub, metadata: {}, scope: original.scope, props });
   console.log(JSON.stringify({ event: "mcp_sign_in", client_id: original.clientId }));
   headers.set("Location", redirectTo);

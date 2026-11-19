@@ -26,10 +26,13 @@ describe("resolveLink, linkKind and wikilink", () => {
   it("takes a link's kind from the folder or file it points at", () => {
     expect(linkKind("sessions/abc.md")).toBe("session");
     expect(linkKind("ideas/2026-11-18-a-shed-cinema.md")).toBe("idea");
+    expect(linkKind("events/2026-11-21-a-fake-concert.md")).toBe("event");
     expect(linkKind("topics/garden.md")).toBe("topic");
     expect(linkKind("USER.md")).toBe("user");
     expect(linkKind("MEMORY.md")).toBe("memory");
-    expect(linkKind("somewhere/else.md")).toBe("note");
+    expect(linkKind("notes/2026-11-18-a-fake-quote.md")).toBe("note");
+    expect(linkKind("people/maya.md")).toBe("person");
+    expect(linkKind("somewhere/else.md")).toBe("other");
   });
 
   it("writes links without the extension", () => {

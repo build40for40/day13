@@ -1,23 +1,45 @@
 // A typed client for the brain Worker (workers/brain/README.md is the spec). No UI in here.
 
-export type NoteKind = 'user' | 'memory' | 'session' | 'idea' | 'question' | 'task' | 'thought' | 'topic'
+export type NoteKind = 'user' | 'memory' | 'session' | 'idea' | 'question' | 'task' | 'event' | 'note' | 'thought' | 'topic' | 'person'
 
 export type Session = { id: string; started_at: string; opening_line?: string }
 
-export type Note = { path: string; kind: NoteKind; title?: string; body: string; updated_at?: string; linked_from?: string[] }
+/** What the brain files with a task or event. Only the fields that are set are there. */
+export type NoteFields = {
+  area?: 'work' | 'personal'
+  people?: string[]
+  /** YYYY-MM-DD */
+  due?: string
+  /** YYYY-MM-DD or YYYY-MM-DDTHH:MM, London time */
+  start?: string
+  location?: string
+  importance?: 'low' | 'normal' | 'high'
+  status?: 'open' | 'done' | 'dropped'
+  completed_at?: string
+  /** Which of area, due and importance the assistant worked out rather than was told. */
+  inferred?: string[]
+  topics?: string[]
+}
+
+export type Note = { path: string; kind: NoteKind; title: string; updated_at: string; fields: NoteFields; body?: string; linked_from?: string[] }
+
+/** What can be changed on a task or event. `null` clears a field. */
+export type NotePatch = { status?: 'open' | 'done' | 'dropped'; due?: string | null; importance?: 'low' | 'normal' | 'high' | null; area?: 'work' | 'personal' }
 
 export type TurnEvent =
   | { type: 'text'; delta: string }
   | { type: 'done'; session_ended: boolean }
-  | { type: 'error'; error: string }
+  | { type: 'error'; message: string }
 
 export type Brain = {
   startSession(): Promise<Session>
-  /** Streams the reply. Nothing is saved from a turn that errors, so the caller can resend it. */
+  /** Streams the reply. A task or event change can be saved even if the reply errors. */
   turn(sessionId: string, text: string): AsyncIterable<TurnEvent>
   endSession(sessionId: string): Promise<'filing' | 'nothing_said'>
   notes(kind?: NoteKind): Promise<Note[]>
   note(path: string): Promise<Note>
+  /** Marks a task done, changes its date, and so on. */
+  patchNote(path: string, patch: NotePatch): Promise<Note>
 }
 
 export class BrainError extends Error {
@@ -35,6 +57,7 @@ export function createBrain(opts: { baseUrl?: string; getToken: () => string | P
 
   async function call(path: string, init: RequestInit = {}): Promise<Response> {
     const res = await doFetch(base + path, {
+      cache: 'no-store',
       ...init,
       headers: { ...init.headers, authorization: `Bearer ${await opts.getToken()}`, 'content-type': 'application/json' },
     })
@@ -64,6 +87,9 @@ export function createBrain(opts: { baseUrl?: string; getToken: () => string | P
     },
     async note(path) {
       return (await call(`/notes/${path}`)).json()
+    },
+    async patchNote(path, patch) {
+      return (await call(`/notes/${path}`, { method: 'PATCH', body: JSON.stringify(patch) })).json()
     },
   }
 }

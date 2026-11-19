@@ -7,7 +7,7 @@ import { parseProfilePatch } from "./profile";
 import { NOTE_KINDS, type NoteKind } from "./vault";
 import { authenticate, deleteWorkosUser } from "./workos";
 
-import type { UserBrain } from "./brain";
+import type { NotePatch, UserBrain } from "./brain";
 import type { Rpc } from "./types";
 
 export { UserBrain } from "./brain";
@@ -15,7 +15,7 @@ export { UserBrain } from "./brain";
 const MAX_BODY_BYTES = 64 * 1024;
 const MAX_TURN_CHARS = 8_000;
 
-type Brain = Rpc<Pick<UserBrain, "getProfile" | "updateProfile" | "wipe" | "createSession" | "takeTurn" | "finishSession" | "getSession" | "listNotes" | "getNote" | "listVersions" | "restoreVersion">>;
+type Brain = Rpc<Pick<UserBrain, "getProfile" | "updateProfile" | "wipe" | "createSession" | "takeTurn" | "finishSession" | "getSession" | "listNotes" | "getNote" | "updateNote" | "listVersions" | "restoreVersion">>;
 
 /** The voice API at `/day13/api`, signed in with a WorkOS access token. */
 const api = {
@@ -113,8 +113,15 @@ async function route(request: Request, path: string, userId: string, brain: Brai
   }
 
   if (path.startsWith("/notes/")) {
-    if (method !== "GET") return methodNotAllowed("GET");
     const notePath = decodeURIComponent(path.slice("/notes/".length));
+    if (method === "PATCH") {
+      const patch = parseNotePatch(await readJson(request, MAX_BODY_BYTES));
+      if (!patch) return error(400, "invalid_patch");
+      const updated = await brain.updateNote(notePath, patch);
+      if (updated === "note_not_found") return error(404, updated);
+      return updated === "not_a_task" ? error(409, updated) : json(updated);
+    }
+    if (method !== "GET") return methodNotAllowed("GET, PATCH");
     const note = await brain.getNote(notePath);
     return note ? json(note) : error(404, "note_not_found");
   }
@@ -134,6 +141,22 @@ async function route(request: Request, path: string, userId: string, brain: Brai
   }
 
   return error(404, "not_found");
+}
+
+/** `{status?, due?, importance?, area?}` for a task or event, or null when anything in it is off. `null` clears a due date or importance. */
+function parseNotePatch(input: unknown): NotePatch | null {
+  if (!isPlainObject(input)) return null;
+  const body = input;
+  const patch: NotePatch = {};
+  for (const key of Object.keys(body)) {
+    const value = body[key];
+    if (key === "status" && (value === "open" || value === "done" || value === "dropped")) patch.status = value;
+    else if (key === "due" && (value === null || (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)))) patch.due = value;
+    else if (key === "importance" && (value === null || value === "low" || value === "normal" || value === "high")) patch.importance = value;
+    else if (key === "area" && (value === "work" || value === "personal")) patch.area = value;
+    else return null;
+  }
+  return Object.keys(patch).length ? patch : null;
 }
 
 /** A turn is `{text}`: what the person said, already transcribed. */

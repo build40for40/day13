@@ -1,4 +1,6 @@
+import { runInDurableObject } from "cloudflare:test";
 import { env, exports } from "cloudflare:workers";
+import type { DumpItem } from "./reflection";
 import { exportJWK, generateKeyPair, SignJWT, type CryptoKey } from "jose";
 import { vi } from "vitest";
 import { BASE_PATH } from "./http";
@@ -141,17 +143,27 @@ function apiError(type: string, message: string) {
   return { type: "error", error: { type, message } };
 }
 
+/** The task fields of an item that has none of them set, for tests that only care about the rest. */
+export const noTaskFields: Pick<DumpItem, "area" | "people" | "due" | "start" | "location" | "importance" | "inferred"> = { area: "personal", people: [], due: "", start: "", location: "", importance: "", inferred: [] };
+
 /** A raw reflection as Opus might return it, untidy on purpose. */
 export const fakeReflection = {
   summary: "  Dumped a few fake things.   Ended happy. ",
   items: [
-    { kind: "idea", title: "  A fake shed cinema ", detail: "Turn the fake shed into a tiny cinema.", answer: "should be dropped", topics: ["Garden", "garden", " Weekend Projects "] },
-    { kind: "question", title: "How long does fake paint take to dry?", detail: "Asked about drying times.", answer: "About four fake hours.", topics: ["garden"] },
-    { kind: "task", title: " ", detail: "No title, so it's dropped.", answer: "", topics: [] },
+    { kind: "idea", title: "  A fake shed cinema ", detail: "Turn the fake shed into a tiny cinema.", answer: "should be dropped", topics: ["Garden", "garden", " Weekend Projects "], ...noTaskFields },
+    { kind: "question", title: "How long does fake paint take to dry?", detail: "Asked about drying times.", answer: "About four fake hours.", topics: ["garden"], ...noTaskFields },
+    { kind: "task", title: " ", detail: "No title, so it's dropped.", answer: "", topics: [], ...noTaskFields },
+  ],
+  pages: [
+    { kind: "topic", name: " Garden ", summary: "  Planning to turn the fake shed into a cinema.   Paint is next. ", project: true },
+    { kind: "topic", name: "never filed under", summary: "Should be dropped.", project: false },
   ],
   facts: ["Has a fake shed", "Has a fake shed", " "],
   lessons: ["Short answers land best", " "],
 };
+
+/** What the quick pass over an open batch returns: items only. */
+export const fakeDraft = { summary: fakeReflection.summary, items: fakeReflection.items };
 
 let userCount = 0;
 
@@ -166,6 +178,14 @@ export async function api(path: string, { sub = "user_alice", method = "GET", bo
 }
 
 export const brainFor = (sub: string) => env.USER_BRAIN.get(env.USER_BRAIN.idFromName(sub));
+
+const inBrain = (sub: string, statement: string, ...values: string[]) => runInDurableObject(brainFor(sub), (_, state) => void state.storage.sql.exec(statement, ...values));
+
+/** Makes the open batch's quick pass due, as if a minute had gone by since the last thing said. */
+export const aMinuteLater = (sub: string) => inBrain(sub, "UPDATE batches SET file_after = ? WHERE closed_at IS NULL", new Date(Date.now() - 1_000).toISOString());
+
+/** Makes the open batch look as if nothing has been said for longer than it stays open, so the next alarm closes and settles it. */
+export const goneQuiet = (sub: string) => inBrain(sub, "UPDATE batches SET last_entry_at = ? WHERE closed_at IS NULL", new Date(Date.now() - 31 * 60_000).toISOString());
 
 /** Reads a server-sent event stream into its events' data. */
 export async function readEvents<T = unknown>(response: Response): Promise<T[]> {

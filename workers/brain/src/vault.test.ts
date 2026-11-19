@@ -3,7 +3,8 @@ import { runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import type { UserBrain } from "./brain";
 import type { Reflection } from "./reflection";
-import { addLines, editSection, noteTitle, slugify, topicPath, londonDate, londonDay, MAX_VERSIONS_PER_NOTE, nextLondonMidnight, readLearned, rebuildLinks, replaceAbout, replaceSessionLines, restoreVersion, sessionNotePath, splitLearned, versionsOf, writeConsolidation, writeFile, writeReflection, type ReflectedSession } from "./vault";
+import { noTaskFields } from "./testing";
+import { addLines, editSection, filedBy, noteTitle, slugify, topicPath, londonDate, londonDay, MAX_VERSIONS_PER_NOTE, nextLondonMidnight, readLearned, rebuildLinks, replaceAbout, replaceSessionLines, restoreVersion, sessionNotePath, splitLearned, versionsOf, writeConsolidation, writeFile, writeReflection, type ReflectedSession, withFieldsLine, withSummary, mergeArea } from "./vault";
 
 const reflection: Reflection = { items: [], summary: "Asked about fake things.", facts: ["Prefers short answers"], lessons: [] };
 
@@ -133,8 +134,8 @@ describe("filing dumped items", () => {
   const dumped: Reflection = {
     ...reflection,
     items: [
-      { kind: "idea", title: "A fake shed cinema", detail: "Turn the fake shed into a tiny cinema.", answer: "", topics: ["garden", "weekend projects"] },
-      { kind: "question", title: "How long does fake paint take to dry?", detail: "Asked about drying times.", answer: "About four fake hours.", topics: ["garden"] },
+      { kind: "idea", title: "A fake shed cinema", detail: "Turn the fake shed into a tiny cinema.", answer: "", topics: ["garden", "weekend projects"], ...noTaskFields },
+      { kind: "question", title: "How long does fake paint take to dry?", detail: "Asked about drying times.", answer: "About four fake hours.", topics: ["garden"], ...noTaskFields },
     ],
   };
 
@@ -176,6 +177,34 @@ describe("filing dumped items", () => {
       const before = files(sql);
       writeReflection(sql, session({ reflection: dumped }), "2026-11-10T20:00:00Z");
       expect(files(sql)).toEqual(before);
+    });
+  });
+
+  it("removes what an earlier filing of the same session wrote and no longer wants, and keeps the versions", async () => {
+    await inVault("vault_items_refiled", (sql) => {
+      writeReflection(sql, session({ reflection: dumped }), "2026-11-10T19:00:00Z", { draft: true });
+      expect(body(sql, "USER.md")).not.toContain("Prefers short answers");
+      writeReflection(sql, session({ reflection: { ...reflection, items: [{ ...dumped.items[1], topics: ["diy"] }] } }), "2026-11-10T20:00:00Z");
+      expect(files(sql).map((f) => f.path)).toEqual(["USER.md", "questions/2026-11-10-how-long-does-fake-paint-take-to-dry.md", "sessions/2026-11-10-aaaaaaaa.md", "topics/diy.md"]);
+      expect(body(sql, "USER.md")).toContain("Prefers short answers");
+      expect(versionsOf(sql, "ideas/2026-11-10-a-fake-shed-cinema.md").map((v) => v.operation)).toEqual(["deleted", "created"]);
+      expect(links(sql).filter((l) => l.dst.startsWith("ideas/"))).toEqual([]);
+    });
+  });
+
+  it("leaves a note the person has changed as it is, and keeps it filed under its topics", async () => {
+    await inVault("vault_items_changed", (sql) => {
+      writeReflection(sql, session({ reflection: dumped }), "2026-11-10T19:00:00Z", { draft: true });
+      const idea = "ideas/2026-11-10-a-fake-shed-cinema.md";
+      writeFile(sql, idea, "idea", { session_id: session().id, topics: ["garden"], status: "done" }, "# A fake shed cinema\n\nTheir own words.\n", "2026-11-10T19:30:00Z", "user");
+      expect(filedBy(sql, session().id)).toEqual([
+        { kind: "idea", title: "A fake shed cinema", changed: true },
+        { kind: "question", title: "How long does fake paint take to dry?", changed: false },
+      ]);
+      writeReflection(sql, session({ reflection: { ...reflection, items: [{ ...dumped.items[0], detail: "A different detail." }] } }), "2026-11-10T20:00:00Z");
+      expect(body(sql, idea)).toBe("# A fake shed cinema\n\nTheir own words.\n");
+      expect(files(sql).map((f) => f.path)).not.toContain("questions/2026-11-10-how-long-does-fake-paint-take-to-dry.md");
+      expect(body(sql, "topics/garden.md")).toBe("# garden\n\n## Filed\n\n- [[ideas/2026-11-10-a-fake-shed-cinema|A fake shed cinema]] ([[sessions/2026-11-10-aaaaaaaa]])\n");
     });
   });
 
@@ -248,5 +277,68 @@ describe("writeConsolidation", () => {
       expect(versionsOf(sql, "USER.md")[0]).toMatchObject({ actor: "consolidation" });
       expect(links(sql)).toEqual([]);
     });
+  });
+});
+
+describe("the fields line of a task or event", () => {
+  it("is swapped in place, added after the detail and dropped when there's nothing to say", () => {
+    const filed = "# Fake task\n\nA fake detail.\n\nDue 2026-11-19. Where: school.\n\nFiled under [[topics/home|home]]. From [[sessions/2026-11-18-aaaaaaaa]].\n";
+    expect(withFieldsLine(filed, "Due 2026-11-25.")).toBe(filed.replace("Due 2026-11-19. Where: school.", "Due 2026-11-25."));
+    expect(withFieldsLine(filed, "")).toBe(filed.replace("Due 2026-11-19. Where: school.\n\n", ""));
+    expect(withFieldsLine("# Fake task\n\nA fake detail.\n\nFrom [[sessions/2026-11-18-aaaaaaaa]].\n", "Due 2026-11-25.")).toBe("# Fake task\n\nA fake detail.\n\nDue 2026-11-25.\n\nFrom [[sessions/2026-11-18-aaaaaaaa]].\n");
+    expect(withFieldsLine("# Fake task\n", "Due 2026-11-25.")).toBe("# Fake task\n\nDue 2026-11-25.\n");
+  });
+});
+
+describe("topic and person pages", () => {
+  const item = (overrides: Partial<Reflection["items"][number]>) => ({ kind: "task" as const, title: "Fake task", detail: "A fake detail.", answer: "", topics: ["fake trip"], ...noTaskFields, ...overrides });
+
+  it("open with a summary that's rewritten each time, above everything filed there", async () => {
+    await inVault("vault_pages", (sql) => {
+      const first: Reflection = {
+        summary: "Planned a fake trip.",
+        items: [item({ title: "Book the fake flights", area: "personal", people: ["Maya", "the kids"] })],
+        pages: [
+          { kind: "topic", name: "fake trip", summary: "Going in the spring. Flights aren't booked yet.", project: true },
+          { kind: "person", name: "Maya", summary: "Their fake sister, coming on the trip.", project: false },
+        ],
+        facts: [],
+        lessons: [],
+      };
+      writeReflection(sql, session({ reflection: first }), "2026-11-10T18:30:00Z");
+      const task = "tasks/2026-11-10-book-the-fake-flights";
+      expect(body(sql, `${task}.md`)).toContain("Who: [[people/maya|Maya]], [[people/kids|the kids]].");
+      expect(body(sql, "topics/fake-trip.md")).toBe(`# fake trip\n\n## Summary\n\nGoing in the spring. Flights aren't booked yet.\n\n## Filed\n\n- [[${task}|Book the fake flights]] ([[sessions/2026-11-10-aaaaaaaa]])\n`);
+      expect(body(sql, "people/maya.md")).toBe(`# Maya\n\n## Summary\n\nTheir fake sister, coming on the trip.\n\n## Filed\n\n- [[${task}|Book the fake flights]] ([[sessions/2026-11-10-aaaaaaaa]])\n`);
+      expect(body(sql, "people/kids.md")).toBe(`# the kids\n\n## Filed\n\n- [[${task}|Book the fake flights]] ([[sessions/2026-11-10-aaaaaaaa]])\n`);
+      const meta = (path: string) => JSON.parse(files(sql).find((f) => f.path === path)!.frontmatter);
+      expect(meta("topics/fake-trip.md")).toEqual({ topic: "fake trip", area: "personal", type: "project" });
+      expect(files(sql).find((f) => f.path === "people/maya.md")).toMatchObject({ kind: "person", frontmatter: JSON.stringify({ name: "Maya", area: "personal" }) });
+      expect(links(sql)).toContainEqual({ src: `${task}.md`, dst: "people/maya.md", kind: "person" });
+
+      const second: Reflection = {
+        summary: "Booked time off.",
+        items: [item({ title: "Ask for fake leave", area: "work", people: ["Kids"] })],
+        pages: [{ kind: "topic", name: "fake trip", summary: "Going in the spring. Leave is requested, flights still to book.", project: true }],
+        facts: [],
+        lessons: [],
+      };
+      writeReflection(sql, session({ id: "bbbbbbbb-2222-4222-8222-222222222222", started_at: "2026-11-12T18:00:00Z", reflection: second }), "2026-11-12T18:30:00Z");
+      expect(body(sql, "topics/fake-trip.md")).toContain("## Summary\n\nGoing in the spring. Leave is requested, flights still to book.\n\n## Filed\n\n- [[tasks/2026-11-10-book-the-fake-flights|");
+      expect(body(sql, "topics/fake-trip.md")).not.toContain("aren't booked yet");
+      expect(meta("topics/fake-trip.md").area).toBe("mixed");
+      expect(body(sql, "people/kids.md").match(/^- /gm)).toHaveLength(2);
+      expect(files(sql).filter((f) => f.kind === "person").map((f) => f.path)).toEqual(["people/kids.md", "people/maya.md"]);
+    });
+  });
+
+  it("gain a summary above what's filed when they had none, and keep their area once it's mixed", () => {
+    expect(withSummary("# garden\n\n## Filed\n\n- one\n", "Half painted.")).toBe("# garden\n\n## Summary\n\nHalf painted.\n\n## Filed\n\n- one\n");
+    expect(withSummary("# garden\n", "Half painted.")).toBe("# garden\n\n## Summary\n\nHalf painted.\n");
+    expect(withSummary("# garden\n\n## Filed\n\n- one\n", "")).toBe("# garden\n\n## Filed\n\n- one\n");
+    expect(mergeArea(undefined, [])).toBeUndefined();
+    expect(mergeArea("work", ["work"])).toBe("work");
+    expect(mergeArea("work", ["personal"])).toBe("mixed");
+    expect(mergeArea("mixed", ["work"])).toBe("mixed");
   });
 });

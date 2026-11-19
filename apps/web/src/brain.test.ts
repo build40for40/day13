@@ -54,3 +54,35 @@ describe('fake brain', () => {
     expect((await brain.notes('task')).every((n) => n.kind === 'task')).toBe(true)
   })
 })
+
+describe('patching a note', () => {
+  it('sends only what changed, as JSON, to the note', async () => {
+    let seen: { url: string; method?: string; body?: string } | null = null
+    const brain = createBrain({
+      getToken: () => 't',
+      fetch: (async (url: string, init: RequestInit) => {
+        seen = { url, method: init.method, body: init.body as string }
+        return new Response(JSON.stringify({ path: 'tasks/x.md', kind: 'task', title: 'x', updated_at: 'now', fields: { status: 'done' } }), { status: 200 })
+      }) as unknown as typeof fetch,
+    })
+    const note = await brain.patchNote('tasks/x.md', { status: 'done' })
+    expect(seen).toEqual({ url: '/day13/api/notes/tasks/x.md', method: 'PATCH', body: '{"status":"done"}' })
+    expect(note.fields.status).toBe('done')
+  })
+
+  it('raises the error code when the brain refuses', async () => {
+    const brain = createBrain({ getToken: () => 't', fetch: (async () => new Response(JSON.stringify({ error: 'not_a_task' }), { status: 409 })) as unknown as typeof fetch })
+    await expect(brain.patchNote('USER.md', { status: 'done' })).rejects.toEqual(new BrainError(409, 'not_a_task'))
+  })
+})
+
+describe('the fake brain keeps the filing fields', () => {
+  it('lists tasks with their fields and marks one done', async () => {
+    const brain = createFakeBrain()
+    const tasks = await brain.notes('task')
+    expect(tasks.length).toBeGreaterThan(0)
+    expect(tasks.every((t) => t.fields.status === 'open')).toBe(true)
+    const done = await brain.patchNote(tasks[0]!.path, { status: 'done' })
+    expect(done.fields).toMatchObject({ status: 'done', completed_at: expect.any(String) })
+  })
+})

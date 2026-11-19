@@ -1,4 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
+import { liveItemTools } from "./item-actions";
 
 /**
  * The tools Claude can call during a live turn. They all run inside the Durable Object.
@@ -31,4 +32,5 @@ export const tools = [
       },
     },
   },
+  ...liveItemTools.map(({ name, description, inputSchema }) => ({ name, description, input_schema: inputSchema })),
 ] as const satisfies readonly Anthropic.Tool[];
